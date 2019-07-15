@@ -1,20 +1,19 @@
-import tqdm
+from tqdm import tqdm
 import numpy as np
 import os 
-from utils import quat2mat, randquat
-
+from utils import randquat, quat2mat
 
 if __name__ == "__main__":
     a1, a2, a3 = np.random.uniform(25, 75, (3,))
     e1, e2     = np.random.uniform(0.05, 1.0, (2,))
     pos = np.array([128.0, 128.0, 128.0])
 
-
-    dst = os.path.expanduser("~/superblocks/data_val/")
-    n_data = 1000
+    dst = "./"
+    #dst = os.path.expanduser("../data_rot_val/")
+    n_data = 5000
 
     f1 = open("gen_rand_rot_val.sh", "w")
-    f2 = open("data_rot_val.csv", "w")
+    f2 = open("../annotations/data_rot_val.csv", "w")
 
     for i in tqdm(range(n_data)):
 
@@ -41,4 +40,3 @@ if __name__ == "__main__":
         f2.write(csvline)
     f1.close()
     f2.close()
-    sys.exit(0)
