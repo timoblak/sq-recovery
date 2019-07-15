@@ -52,6 +52,44 @@ def data_gen_iso(csvfile, img_dir, batch_size, debug=False, mode=""):
             Y_batch[batch_ind] = line[1:9]
         yield X_batch, Y_batch
 
+def data_gen_quats(csvfile, img_dir, batch_size, debug=False, mode=""):
+    print("okokokok")
+    archive = "../data/data" + mode + "/data_rot.npy"
+    labels = parse_csv_quats(csvfile)
+    fns = sorted(os.listdir(img_dir))
+
+    if not os.path.isfile(archive):
+        all_imgs = np.zeros((len(fns), 256, 256, 1), dtype="uint8")
+        for i in tqdm(range(len(fns))):
+            path = os.path.join(img_dir, fns[i])
+            im = cv2.imread(path)[:, :, 0].astype("float32")
+            all_imgs[i, :, :, 0] = im
+
+        np.save(archive, all_imgs)
+    else:
+        print("Loading existing...")
+        all_imgs = np.load(archive)
+
+    while True:
+        for i in range(0, all_imgs.shape[0], batch_size):
+            #im_ind = np.random.randint(len(labels))
+            X_batch = all_imgs[i:i+batch_size] / 255
+            Y1_batch = labels[i:i+batch_size, 1:9]
+            Y2_batch = labels[i:i+batch_size, -4:]
+            yield X_batch, [Y1_batch, Y2_batch]
+
+    #while True:
+    #    for batch_ind in range(batch_size):
+    #        im_ind = np.random.randint(len(labels))
+    #        line = labels[im_ind]
+    #        if debug:
+    #            print(line, fns[im_ind])
+    #        img = all_imgs[im_ind].mean(2).astype("float32") / 255
+    #        X_batch[batch_ind, :, :, 0] = img.astype("float32")
+    #        Y1_batch[batch_ind] = line[1:9]
+    #        Y2_batch[batch_ind] = line[-4:]
+    #    yield X_batch, [Y1_batch, Y2_batch]
+
 
 def parse_csv_full(csvfile):
     with open(csvfile, "r") as f:
@@ -124,46 +162,10 @@ def parse_csv_quats(csvfile):
         for i in range(-4, 0):
            pl2.append(float(pl[i]))
         parsed_lines.append(pl2)
-    return parsed_lines
+    return np.array(parsed_lines)
 
 
-def data_gen_quats(csvfile, img_dir, batch_size, debug=False, mode=""):
-    archive = os.path.expanduser("~/superblocks/data" + mode + "/quats_large.npy")
-    parsed_lines = parse_csv_quats(csvfile)
-    fns = sorted(os.listdir(img_dir))
-    print("Loading data..." )
-    if not os.path.isfile(archive):
-        all_imgs = np.zeros((len(fns), 256, 256, 1), dtype="uint8")
-        for i in tqdm(range(len(fns))):
-            path = os.path.join(img_dir, fns[i])
-            im = cv2.imread(path)[:, :, 0].astype("float32")
-            all_imgs[i, :, :, 0] = im
-        np.save(archive, all_imgs)
-    else:
-        all_imgs = np.load(archive)
 
-    print("Total data size: " + str(all_imgs.nbytes))
-
-    X_batch = np.zeros((batch_size, 256, 256, 1), dtype="float32")
-    Y1_batch = np.zeros((batch_size, 8), dtype="float32")
-    Y2_batch = np.zeros((batch_size, 4), dtype="float32")
-    img = None
-    while True:
-        fns = []
-        for batch_ind in range(batch_size):
-            im_ind = np.random.randint(1000) #len(w))
-            line = parsed_lines[im_ind]
-            #print(line)
-            if debug:
-                fns.append(line[0])
-            img = all_imgs[im_ind].mean(2).astype("float32") / 255
-            X_batch[batch_ind, :, :, 0] = img.astype("float32")
-            Y1_batch[batch_ind] = line[1 : 9]
-            Y2_batch[batch_ind] = line[9:]
-        if debug:
-            yield X_batch, [Y1_batch, Y2_batch, fns]
-        else:
-            yield X_batch, [Y1_batch, Y2_batch]
 
 
 if __name__ == "__main__":
