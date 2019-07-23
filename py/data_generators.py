@@ -2,7 +2,7 @@ import os
 from tqdm import tqdm
 import cv2
 import numpy as np
-from random import shuffle
+
 
 def parse_csv_iso(csvfile):
     with open(csvfile, "r") as f:
@@ -13,14 +13,12 @@ def parse_csv_iso(csvfile):
         pl = line.split(",")
         pl2 = [pl[0]]
         for i in [1, 2, 3, 4, 5, 6, 7, 8]:
-            #print(pl[i])
             pl2.append(float(pl[i]))
         for i in [1, 2, 3]:
             pl2[i] = (pl2[i] - 25) / 50
         for i in [6, 7, 8]:
             pl2[i] /= 255.0
         parsed_lines.append(pl2)
-    #print(len(parsed_lines))
     return parsed_lines
 
 
@@ -40,7 +38,6 @@ def data_gen_iso(csvfile, img_dir, batch_size, debug=False, mode=""):
 
     X_batch = np.zeros((batch_size, 256, 256, 1), dtype="float32")
     Y_batch = np.zeros((batch_size, 8), dtype="float32")
-    img = None
     while True:
         for batch_ind in range(batch_size):
             im_ind = np.random.randint(len(parsed_lines))
@@ -51,6 +48,13 @@ def data_gen_iso(csvfile, img_dir, batch_size, debug=False, mode=""):
             X_batch[batch_ind, :, :, 0] = img.astype("float32")
             Y_batch[batch_ind] = line[1:9]
         yield X_batch, Y_batch
+
+def visualize_batch(X, Y1, Y2, selected, mode=""):
+    for i in range(len(X)):
+        cv2.imshow("ad", X[i])
+        print(Y1[i], Y2[i], selected[i])
+        cv2.waitKey(0)
+
 
 def data_gen_quats(csvfile, img_dir, batch_size, debug=False, mode=""):
     archive = "../data/data" + mode + "/data_rot.npy"
@@ -64,7 +68,6 @@ def data_gen_quats(csvfile, img_dir, batch_size, debug=False, mode=""):
             #priint(path)
             im = cv2.imread(path)[:, :, 0].astype("float32")
             all_imgs[i, :, :, 0] = im
-
         np.save(archive, all_imgs)
     else:
         print("Loading existing... (" +mode+ ")")
@@ -75,9 +78,12 @@ def data_gen_quats(csvfile, img_dir, batch_size, debug=False, mode=""):
         p = np.random.permutation(len(all_imgs))
         for i in range(0, all_imgs.shape[0], batch_size):
             #im_ind = np.random.randint(len(labels))
-            X_batch = all_imgs[p[i:i+batch_size]] / 255
-            Y1_batch = labels[p[i:i+batch_size], 1:9]
-            Y2_batch = labels[p[i:i+batch_size], -4:]
+            selected = p[i:i+batch_size]
+            X_batch = all_imgs[selected] / 255
+            Y1_batch = labels[selected, 1:9]
+            Y2_batch = labels[selected, -4:]
+            if mode=="_rot_val":
+                visualize_batch(X_batch, Y1_batch, Y2_batch, selected)
             #print(X_batch.shape, Y1_batch.shape, Y2_batch.shape)
             yield X_batch, [Y1_batch, Y2_batch]
 

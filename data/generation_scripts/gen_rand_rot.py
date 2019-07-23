@@ -19,7 +19,7 @@ if __name__ == "__main__":
 
         fn = os.path.join(dst, "%06d.bmp" % i)
         command = "./scanner " + fn + " "
-        dims = np.random.uniform(25, 76, (3,))
+        dims = np.random.uniform(25, 75, (3,))
         command += ("%f " * 3) % tuple(dims)
         shape = np.random.uniform(0.01, 1.0, (2,))
         command += ("%f " * 2) % tuple(shape)

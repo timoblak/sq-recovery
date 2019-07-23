@@ -20,7 +20,7 @@ if __name__ == "__main__":
 
     model_path = "../models/cnn_100k_2.h5"
 
-    BATCH_SIZE = 64
+    BATCH_SIZE = 128
     NB_TRAIN = len(data_csv)
     NB_TEST = len(data_val_csv)
     train_generator = data_gen_quats(data_csv, path_to_data, BATCH_SIZE, mode="")
