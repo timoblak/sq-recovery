@@ -13,19 +13,18 @@ def schedule(epoch):
 
 
 if __name__ == "__main__":
-    data_csv = "../data/annotations/data_rot.csv"
-    data_val_csv = "../data/annotations/data_rot_val.csv"
+    data_csv = parse_csv_quats("../data/annotations/data_rot.csv")
+    data_val_csv = parse_csv_quats("../data/annotations/data_rot_val.csv")
     path_to_data = "../data/data/"
     path_to_val_data = "../data/data_rot_val/"
 
     model_path = "../models/cnn_100k_2.h5"
 
-
-    train_generator = data_gen_quats(data_csv, path_to_data, 64, mode="")
-
-    val_generator = data_gen_quats(data_val_csv, path_to_val_data, 64, mode="_rot_val")
-
-
+    BATCH_SIZE = 64
+    NB_TRAIN = len(data_csv)
+    NB_TEST = len(data_val_csv)
+    train_generator = data_gen_quats(data_csv, path_to_data, BATCH_SIZE, mode="")
+    val_generator = data_gen_quats(data_val_csv, path_to_val_data, BATCH_SIZE, mode="_rot_val")
 
     schd = LearningRateScheduler(schedule)
     ckpt = ModelCheckpoint(model_path,
@@ -33,9 +32,8 @@ if __name__ == "__main__":
                            save_best_only=True)
     tboard = TensorBoard()
     m = get_model_rot(outputs=(8, 4))
-
     m.fit_generator(train_generator, epochs=2000,
                     callbacks=[schd, ckpt, tboard],
-                    steps_per_epoch=1500,
+                    steps_per_epoch=NB_TRAIN/BATCH_SIZE,
                     validation_data=val_generator,
-                    validation_steps=80)
+                    validation_steps=NB_TEST/BATCH_SIZE)

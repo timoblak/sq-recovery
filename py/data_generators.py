@@ -2,7 +2,7 @@ import os
 from tqdm import tqdm
 import cv2
 import numpy as np
-
+from random import shuffle
 
 def parse_csv_iso(csvfile):
     with open(csvfile, "r") as f:
@@ -53,29 +53,32 @@ def data_gen_iso(csvfile, img_dir, batch_size, debug=False, mode=""):
         yield X_batch, Y_batch
 
 def data_gen_quats(csvfile, img_dir, batch_size, debug=False, mode=""):
-    print("okokokok")
     archive = "../data/data" + mode + "/data_rot.npy"
-    labels = parse_csv_quats(csvfile)
+    labels = csvfile
     fns = sorted(os.listdir(img_dir))
 
     if not os.path.isfile(archive):
         all_imgs = np.zeros((len(fns), 256, 256, 1), dtype="uint8")
         for i in tqdm(range(len(fns))):
             path = os.path.join(img_dir, fns[i])
+            #priint(path)
             im = cv2.imread(path)[:, :, 0].astype("float32")
             all_imgs[i, :, :, 0] = im
 
         np.save(archive, all_imgs)
     else:
-        print("Loading existing...")
+        print("Loading existing... (" +mode+ ")")
         all_imgs = np.load(archive)
+    print(all_imgs.shape, labels.shape, mode)
 
     while True:
+        p = np.random.permutation(len(all_imgs))
         for i in range(0, all_imgs.shape[0], batch_size):
             #im_ind = np.random.randint(len(labels))
-            X_batch = all_imgs[i:i+batch_size] / 255
-            Y1_batch = labels[i:i+batch_size, 1:9]
-            Y2_batch = labels[i:i+batch_size, -4:]
+            X_batch = all_imgs[p[i:i+batch_size]] / 255
+            Y1_batch = labels[p[i:i+batch_size], 1:9]
+            Y2_batch = labels[p[i:i+batch_size], -4:]
+            #print(X_batch.shape, Y1_batch.shape, Y2_batch.shape)
             yield X_batch, [Y1_batch, Y2_batch]
 
     #while True:
