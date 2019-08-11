@@ -2,9 +2,14 @@ from keras.applications import *
 from keras.layers import *
 from keras.models import Model
 import keras.backend as K
+from keras.optimizers import Adam
 
 def quaternion_loss(y_true, y_pred):
     return K.sqrt(K.sum(K.square(y_true - y_pred), axis=-1))
+
+def quaternion_loss_np(y_true, y_pred):
+    return np.sqrt(np.sum(np.square(y_true - y_pred), axis=-1))
+
 
 def get_regression_model():
     base_model = ResNet50(include_top=False, weights="imagenet",
