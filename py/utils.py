@@ -10,6 +10,20 @@ def quat2mat(q):
     return np.array(M)
 
 
+def quat_conjungate(q):
+    q[:3] = -q[:3]
+    return q
+
+def quat_product(q1, q2):
+    x1, y1, z1, w1 = q1
+    x2, y2, z2, w2 = q2
+    x = x1 * w2 + y1 * z2 - z1 * y2 + w1 * x2
+    y = -x1 * z2 + y1 * w2 + z1 * x2 + w1 * y2
+    z = x1 * y2 - y1 * x2 + z1 * w2 + w1 * z2
+    w = -x1 * x2 - y1 * y2 - z1 * z2 + w1 * w2
+    return [x, y, z, w]
+
+
 def randquat():
     u = np.random.uniform(0, 1, (3,))
     q = np.array([np.sqrt(1 - u[0]) * np.sin(2 * np.pi * u[1]),

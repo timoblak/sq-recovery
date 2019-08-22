@@ -82,8 +82,8 @@ def data_gen_quats(csvfile, img_dir, batch_size, debug=False, mode=""):
             X_batch = all_imgs[selected] / 255
             Y1_batch = labels[selected, 1:9]
             Y2_batch = labels[selected, -4:]
-            if mode=="_rot_val":
-                visualize_batch(X_batch, Y1_batch, Y2_batch, selected)
+            #if mode=="_rot_val":
+            #    visualize_batch(X_batch, Y1_batch, Y2_batch, selected)
             #print(X_batch.shape, Y1_batch.shape, Y2_batch.shape)
             yield X_batch, [Y1_batch, Y2_batch]
 

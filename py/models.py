@@ -109,6 +109,6 @@ def get_model_rot(inshape=(256, 256, 1), outputs=(8, 4)):
 
     metrics_dict = {"bl": "mae", "rot": quaternion_loss}
 
-    model.compile("adam", loss=metrics_dict)
+    model.compile(Adam(lr=0.0001), loss=metrics_dict)
     #model.summary()
     return model
