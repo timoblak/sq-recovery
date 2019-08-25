@@ -17,9 +17,9 @@ tf.enable_eager_execution()
 
 e = [1.0, 1.0]
 a = [32.0, 16.0, 16.0]
-q = [0.0, 0.0, 0.7071068, 0.7071068]
-c = [20.0, 0.0, 0.0]
-params = a + e + c + q
+q = [0, 0, 0.7071068, 0.7071068 ]
+c = [0, -32, 0.0]
+params = np.concatenate([a, e, c, q]).astype(np.float32)
 
 xyz = tf.cast(tf.stack(tf.meshgrid(rng, rng, rng, indexing="ij")), dtype=tf.float32)
 
@@ -66,9 +66,11 @@ fig = plt.figure()
 ax = fig.gca(projection='3d')
 ax.set_aspect("auto")
 
+disp = (md < 1)
+#disp = (md >= 0)
 #yg = ax.scatter(MESH[0][:32], MESH[1][:32], MESH[2][:32], c=m_rot[0][:32].ravel(), marker='o', alpha=0.5)
 #yg = ax.scatter(MESH[0][:32], MESH[1][:32], MESH[2][:32], c=md[:32].ravel(), marker='o', alpha=0.5)
-yg = ax.scatter(MESH[0][md < 1], MESH[1][md < 1], MESH[2][md < 1], c=md[md < 1].ravel(), marker='o', alpha=0.3)
+yg = ax.scatter(MESH[0][disp], MESH[1][disp], MESH[2][disp], c=md[disp].ravel(), marker='o', alpha=0.3)
 #yg = ax.scatter(MESH[0], MESH[1], MESH[2], c=md.ravel(), marker='o', alpha=0.5)
 ax.set(xlim=(-32, 32), ylim=(-32, 32), zlim=(-32, 32))
 ax.set_xlabel('X Label')
