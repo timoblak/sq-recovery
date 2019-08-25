@@ -42,10 +42,10 @@ def quat_product(q1, q2):
 size = 64
 MESH = np.mgrid[-size/2:size/2, -size/2:size/2, -size/2:size/2].astype(np.float32)
 
-e = [1, 1]
-a = [32, 16, 16]
-q = [0, 0, 0.7071068, 0.7071068]
-c = [20, 0, 0]
+e = [0.1, 1.0]
+a = [32.0, 16.0, 16.0]
+q = [0.0, 0.0, 0.7071068, 0.7071068]
+c = [15.0, 0.0, 0.0]
 
 
 #q = [0, 0, 0, 1]
@@ -69,7 +69,6 @@ fig = plt.figure()
 ax = fig.gca(projection='3d')
 ax.set_aspect("auto")
 
-print(md < 1)
 #yg = ax.scatter(MESH[0][:32], MESH[1][:32], MESH[2][:32], c=m_rot[0][:32].ravel(), marker='o', alpha=0.5)
 #yg = ax.scatter(MESH[0][:32], MESH[1][:32], MESH[2][:32], c=md[:32].ravel(), marker='o', alpha=0.5)
 yg = ax.scatter(MESH[0][md < 1], MESH[1][md < 1], MESH[2][md < 1], c=md[md < 1].ravel(), marker='o', alpha=0.3)
