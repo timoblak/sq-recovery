@@ -42,27 +42,19 @@ def quat_product(q1, q2):
 size = 64
 MESH = np.mgrid[-size/2:size/2, -size/2:size/2, -size/2:size/2].astype(np.float32)
 
-e = [0.1, 1.0]
-a = [32.0, 16.0, 16.0]
-q = [0.0, 0.0, 0.7071068, 0.7071068]
-c = [15.0, 0.0, 0.0]
-print(MESH.shape)
-pm = np.stack(MESH, axis=-1)
-print(pm[32][32][32])
-print(pm[32][31][32])
-print(pm[32][31][33])
-print(pm[32][31][34])
-print(pm[32][31][35])
-print(pm[32][31][30])
+
+p1 = [32.0, 16.0, 16.0,    0.1, 1.0,    5.0, 0.0, 0.0,    0.0, 0.0, 0.7071068, 0.7071068]
+p2 = [32.0, 16.0, 16.0,    1, 1.0,    5.0, 0.0, 0.0,    0.0, 0.0, 0.7071068, 0.7071068]
+p3 = [11.0, 20, 16.0,    1, 1.0,    5.0, 0.0, 0.0,    0.0, 0.0, 0.7071068, 0.7071068]
+p4 = [32.0, 16.0, 16.0,    1, 1.0,    5.0, 0.0, 0.0,    0.0, 0.0, 0, 1]
+params = np.array([p1, p2, p3, p4])
 #exit()
-#q = [0, 0, 0, 1]
 
-params = a + e + c + q
 t = time()
 
 
 t = time()
-md = ins_outs(MESH, params)
+md = ins_outs(np.array([MESH]*4), params)
 print(time()-t)
 
 
