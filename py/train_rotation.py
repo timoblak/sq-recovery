@@ -18,12 +18,14 @@ if __name__ == "__main__":
     path_to_data = "../data/data/"
     path_to_val_data = "../data/data_rot_val/"
 
-    model_path = "../models/cnn_100k_2.h5"
+    model_path = "../models/sqcnn.h5"
 
-    BATCH_SIZE = 128
-    NB_TRAIN = len(data_csv)
+    BATCH_SIZE = 1
+    #NB_TRAIN = len(data_csv)
+    NB_TRAIN = len(data_val_csv)
     NB_TEST = len(data_val_csv)
-    train_generator = data_gen_quats(data_csv, path_to_data, BATCH_SIZE, mode="")
+    #train_generator = data_gen_quats(data_csv, path_to_data, BATCH_SIZE, mode="")
+    train_generator = data_gen_quats(data_val_csv, path_to_val_data, BATCH_SIZE, mode="_rot_val")
     val_generator = data_gen_quats(data_val_csv, path_to_val_data, BATCH_SIZE, mode="_rot_val")
 
     schd = LearningRateScheduler(schedule)

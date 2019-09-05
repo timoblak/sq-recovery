@@ -1,15 +1,9 @@
 from keras.applications import *
 from keras.layers import *
 from keras.models import Model
-import keras.backend as K
 from keras.optimizers import Adam
-
-def quaternion_loss(y_true, y_pred):
-    return K.sqrt(K.sum(K.square(y_true - y_pred), axis=-1))
-
-def quaternion_loss_np(y_true, y_pred):
-    return np.sqrt(np.sum(np.square(y_true - y_pred), axis=-1))
-
+import tensorflow as tf
+from loss_functions import chamfer_loss
 
 def get_regression_model():
     base_model = ResNet50(include_top=False, weights="imagenet",
@@ -103,11 +97,14 @@ def get_model_rot(inshape=(256, 256, 1), outputs=(8, 4)):
     #model = Model(x, y)
 
     # For random rotations model
-    y1 = Dense(outputs[0], name="bl")(y)
-    y2 = Dense(outputs[1], name="rot")(y)
-    model = Model(x, [y1, y2])
-
-    metrics_dict = {"bl": "mae", "rot": quaternion_loss}
+    #y1 = Dense(outputs[0], name="bl")(y)
+    #y2 = Dense(outputs[1], name="rot")(y)
+    #model = Model(x, [y1, y2])
+    y = Dense(outputs[0] + outputs[1], name="out")(y)
+    model = Model(x, y)
+    #metrics_dict = {"bl": "mae", "rot": quaternion_loss}
+    #metrics_dict = {"out": "mse"}
+    metrics_dict = {"out": chamfer_loss}
 
     model.compile(Adam(lr=0.0001), loss=metrics_dict)
     #model.summary()

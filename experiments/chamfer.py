@@ -10,13 +10,20 @@ import tensorflow as tf
 def ins_outs(meshgrid, p):
     rot = quat2mat(p[8:])
     # Rotate translation
-    t = quat_product(quat_product(q, p[5:8]+[0]), quat_conjungate(q))
+    t = quat_product(quat_product(p[8:], p[5:8]+[0]), quat_conjungate(p[8:]))
     # Rotate coordinate system
     m = np.einsum('ij,jabc->iabc', rot, meshgrid)
     # Calculate
-    return np.power(np.power((m[0] - t[0]) / p[0], 2 / p[4]) +
-                    np.power((m[1] - t[1]) / p[1], 2 / p[4]), p[4] / p[3]) + \
-           np.power((m[2] - t[2]) / p[2], 2 / p[3])
+    t0 = np.abs(m[0] - t[0]) / p[0]
+    t1 = np.abs(m[1] - t[1]) / p[1]
+    t2 = np.abs(m[2] - t[2]) / p[2]
+
+    p1 = np.power(t0, 2 / p[4]) * np.sign(t0)
+    p2 = np.power(t1, 2 / p[4])
+
+    p3 = np.power(t2, 2 / p[3]) * np.sign(t2)
+    p4 = np.power(np.abs(p1 + p2), p[4] / p[3]) * np.sign(p1 + p2)
+    return p4 + p3
 
 
 def quat2mat(q):
@@ -42,28 +49,22 @@ def quat_product(q1, q2):
 size = 64
 MESH = np.mgrid[-size/2:size/2, -size/2:size/2, -size/2:size/2].astype(np.float32)
 
-e = [0.1, 1.0]
-a = [32.0, 16.0, 16.0]
-q = [0.0, 0.0, 0.7071068, 0.7071068]
-c = [15.0, 0.0, 0.0]
 print(MESH.shape)
 pm = np.stack(MESH, axis=-1)
-print(pm[32][32][32])
-print(pm[32][31][32])
-print(pm[32][31][33])
-print(pm[32][31][34])
-print(pm[32][31][35])
-print(pm[32][31][30])
 #exit()
 #q = [0, 0, 0, 1]
 
-params = a + e + c + q
+#params = [32.0, 16.0, 16.0, 0.541294, 0.574811, 0, 0, 0.0, 0, 0, 0.7071068, 0.7071068 ]
+params = [32.0, 16.0, 16.0, 1, 1, 0, 0, 32, 0, 0, 0.7071068, 0.7071068 ]
+
 t = time()
 
 
 t = time()
 md = ins_outs(MESH, params)
 print(time()-t)
+print(md)
+#print(md)
 
 
 #md = np.log(md)
@@ -76,14 +77,15 @@ fig = plt.figure()
 ax = fig.gca(projection='3d')
 ax.set_aspect("auto")
 
-#yg = ax.scatter(MESH[0][:32], MESH[1][:32], MESH[2][:32], c=m_rot[0][:32].ravel(), marker='o', alpha=0.5)
-#yg = ax.scatter(MESH[0][:32], MESH[1][:32], MESH[2][:32], c=md[:32].ravel(), marker='o', alpha=0.5)
-#yg = ax.scatter(MESH[0][md < 1], MESH[1][md < 1], MESH[2][md < 1], c=md[md < 1].ravel(), marker='o', alpha=0.3)
-yg = ax.scatter(MESH[0], MESH[1], MESH[2], c=pm[:,:,:,0].ravel(), marker='o', alpha=0.5)
+disp = (md < 1)
+# disp = (md >= 0)
+# yg = ax.scatter(MESH[0][:32], MESH[1][:32], MESH[2][:32], c=m_rot[0][:32].ravel(), marker='o', alpha=0.5)
+# yg = ax.scatter(MESH[0][:32], MESH[1][:32], MESH[2][:32], c=md[:32].ravel(), marker='o', alpha=0.5)
+yg = ax.scatter(MESH[0][disp], MESH[1][disp], MESH[2][disp], c=md[disp].ravel(), marker='o', alpha=0.3)
+# yg = ax.scatter(MESH[0], MESH[1], MESH[2], c=md.ravel(), marker='o', alpha=0.5)
 ax.set(xlim=(-32, 32), ylim=(-32, 32), zlim=(-32, 32))
 ax.set_xlabel('X Label')
 ax.set_ylabel('Y Label')
 ax.set_zlabel('Z Label')
-
 
 plt.show()
