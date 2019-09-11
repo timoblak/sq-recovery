@@ -1,7 +1,9 @@
 import numpy as np
 import cv2
 
+
 def quat2mat(q):
+    # Transforms a quaternion into a rotation matrix
     u_q = q / np.sqrt(np.square(q).sum())
     x, y, z, w = u_q
     M = [[1 - 2 * (y**2 + z**2), 2*x*y - 2*w*z, 2*x*z + 2*w*y],
@@ -11,10 +13,13 @@ def quat2mat(q):
 
 
 def quat_conjungate(q):
+    # Returns the conjungate of a quaternion
     q[:3] = -q[:3]
     return q
 
+
 def quat_product(q1, q2):
+    # Calculates a product of two quaternions
     x1, y1, z1, w1 = q1
     x2, y2, z2, w2 = q2
     x = x1 * w2 + y1 * z2 - z1 * y2 + w1 * x2
@@ -25,6 +30,7 @@ def quat_product(q1, q2):
 
 
 def randquat():
+    # Returns a random normalized quaternion
     u = np.random.uniform(0, 1, (3,))
     q = np.array([np.sqrt(1 - u[0]) * np.sin(2 * np.pi * u[1]),
                   np.sqrt(1 - u[0]) * np.cos(2 * np.pi * u[1]),
@@ -34,6 +40,7 @@ def randquat():
 
 
 def mat2quat(M):
+    # Transforms a rotation matrix into a quaternion
     qr = np.sqrt(1+M[0][0]+M[1][1]+M[2][2])/2
     qi = (M[2][1] - M[1][2])/(4*qr)
     qj = (M[0][2] - M[2][0])/(4*qr)
@@ -42,6 +49,7 @@ def mat2quat(M):
 
 
 def get_command(scanner_loc, fn, params):
+    # Creates os command for the renderer
     command = scanner_loc + "scanner " + fn + " "
     dims = params[:3]
     command += ("%f " * 3) % tuple(dims)
@@ -56,6 +64,7 @@ def get_command(scanner_loc, fn, params):
 
 
 def to_pc(img, name):
+
     fimg = cv2.flip(img, 0)
 
     nz = np.nonzero(fimg)

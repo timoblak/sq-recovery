@@ -5,21 +5,6 @@ from keras.optimizers import Adam
 import tensorflow as tf
 from loss_functions import chamfer_loss
 
-def get_regression_model():
-    base_model = ResNet50(include_top=False, weights="imagenet",
-                          input_shape=(None, None, 3))
-    final_layer = "activation_49"
-    y = GlobalAveragePooling2D()(base_model.get_layer(final_layer).output)
-    y = Dense(2048, activation="relu")(y)
-    y = Dense(5)(y)
-    model = Model(base_model.input, y)
-    for layer in model.layers:
-        if "dense" not in layer.name:
-            layer.trainable = False
-    model.compile("adam", "mse", metrics=["mae"])
-    model.summary()
-    return model
-
 
 def cbr(N, k, s):
     def f(x):
@@ -69,7 +54,7 @@ def get_model(inshape=(256, 256, 1), outputs=(8, 9)):
     return model
 
 
-def get_model_rot(inshape=(256, 256, 1), outputs=(8, 4)):
+def get_model_rot(inshape=(256, 256, 1), outputs=12):
     x = Input(inshape)
 
     y = cbr(32, 7, 2)(x)
@@ -90,22 +75,11 @@ def get_model_rot(inshape=(256, 256, 1), outputs=(8, 4)):
     y = cbr(256, 3, 1)(y)
     y = cbr(256, 3, 2)(y)
 
-    y = Flatten()(y)
-
-    # For iso models
-    #y = Dense(outputs, name="block_params")(y)
-    #model = Model(x, y)
-
-    # For random rotations model
-    #y1 = Dense(outputs[0], name="bl")(y)
-    #y2 = Dense(outputs[1], name="rot")(y)
-    #model = Model(x, [y1, y2])
-    y = Dense(outputs[0] + outputs[1], name="out")(y)
+    y = Dense(outputs, name="out")(y)
     model = Model(x, y)
     #metrics_dict = {"bl": "mae", "rot": quaternion_loss}
-    #metrics_dict = {"out": "mse"}
+    #metrics_dict = {"block_params": "mse"}
     metrics_dict = {"out": chamfer_loss}
 
     model.compile(Adam(lr=0.0001), loss=metrics_dict)
-    #model.summary()
     return model

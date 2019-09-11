@@ -5,7 +5,6 @@ import numpy as np
 import cv2
 from time import time
 from matplotlib import pyplot as plt
-from pylab import cm
 import keras.backend as K
 import tensorflow as tf
 from tensorflow import math as M
@@ -18,10 +17,10 @@ tf.enable_eager_execution()
 
 e = [0.1, 0.9]
 a = [32.0, 16.0, 16.0]
-q = [0, 0, 0,1]
+q = [0, 0, 1,1]
 c = [0, -32, 0]
 params = np.concatenate([a, e, c, q]).astype(np.float32)
-params = np.array([0.8267967, 0.8670515, 0.60345936, 0.541294, 0.574811, 0.65267265, 0.62242144, 0.35946697, 0, 0, 0, 1], dtype=np.float32)
+params = np.array([0.5, 0.8, 0.3, 1, 1, 0.5, 0.5, 0.5, 0, 1, 1, 1], dtype=np.float32)
 
 xyz_list = tf.meshgrid(rng, rng, rng, indexing="ij")
 xyz = tf.stack(xyz_list)
@@ -37,6 +36,7 @@ def preprocess_sq(p):
     a, e, t, q = tf.split(p, (3, 2, 3, 4), axis=-1)
     a = M.multiply(a, tf.constant(12.5)) + tf.constant(6.25)
     t = M.multiply(t, tf.constant(64.)) + tf.constant(-32.)
+    q = quat.normalize(q)
     return tf.concat([a, e, t, q], axis=-1)
 
 @tf.function

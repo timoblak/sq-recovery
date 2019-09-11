@@ -20,32 +20,38 @@ if __name__ == "__main__":
     debug = True
     pos = np.array([128, 128, 128], dtype="float64")
     times = []
+
+    # Generate random images and predict
     for num_img in tqdm(range(N)):
         im_name = "{:05d}".format(num_img)
+
+        # Generate parameters for a new SQ
         dims = np.random.uniform(25, 76, (3,))
         shape = np.random.uniform(0.01, 1.0, (2,))
         pos_new = pos + np.random.uniform(-40, 41, (3,))
-        q = q = np.array([1, 1, 1, 0], dtype="float64")
+        q = np.array([1, 1, 1, 0], dtype="float64")
         M = quat2mat(q)
         params = np.concatenate((dims.astype("float64"), shape, pos_new.ravel().astype("float64"), M.ravel()))
         command = get_command(scanner_location, "tmp.bmp", params)
+
+        # Run the renderer
         print(command)
         os.system(command)
 
         params_true = np.concatenate([dims.astype("float64"), shape, pos_new.ravel().astype("float64")])
 
+        # Read, normalize and predict image
         img = cv2.imread("tmp.bmp").mean(2)
-
         img /= 255
 
         t0 = time.time()
         preds = m.predict(img[None, :, :, None])
         if num_img > 0:
             times.append(time.time() - t0)
-        #print(times)
+            #print(times)
             print(np.sum(times)/len(times))
 
-        #print(preds)
+        # De-normalize predicted parameters back
         preds = preds[0]
 
         for i in [0, 1, 2]:
@@ -53,6 +59,7 @@ if __name__ == "__main__":
         for i in [5, 6, 7]:
             preds[i] = 255 * preds[i]
 
+        # Create a new image from predicted parameters and show it alongside the original
         if debug:
             show_preds = np.concatenate([preds, M.ravel()])
             command = get_command(scanner_location, "tmp2.bmp", show_preds)
