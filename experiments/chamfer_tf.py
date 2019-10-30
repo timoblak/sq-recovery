@@ -20,7 +20,7 @@ a = [32.0, 16.0, 16.0]
 q = [0, 0, 1,1]
 c = [0, -32, 0]
 params = np.concatenate([a, e, c, q]).astype(np.float32)
-params = np.array([0.5, 0.8, 0.3, 1, 1, 0.5, 0.5, 0.5, 0, 1, 1, 1], dtype=np.float32)
+params = np.array([0.74,       0.5    ,    0.9 ,       0.804617,   0.116392 ,  0.60326314, 0.47432035, 0.3563426, 0, 0, 0, 1], dtype=np.float32)
 
 xyz_list = tf.meshgrid(rng, rng, rng, indexing="ij")
 xyz = tf.stack(xyz_list)
@@ -49,6 +49,7 @@ def ins_outs_1(p):
     # Rotate translation using quaternion
     t = quat.rotate(p[5:8], p[8:])
     # Rotate coordinate system using rotation matrix
+    print(xyz.shape, rot.shape)
     m = tf.einsum('ij,jabc->iabc', rot, xyz)
 
     # #### Calculate inside-outside equation ####

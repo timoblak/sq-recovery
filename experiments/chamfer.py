@@ -6,11 +6,19 @@ from pylab import cm
 import keras.backend as K
 import tensorflow as tf
 
+def preprocess(p):
+    # Preprocess superquadrics to fit scale of the 3D space.
+    a, e, t, q = p[:3], p[3:5], p[5:8], p[8:]
+    a = a * 12.5 + 6.25
+    t = t * 64. + -32.
+    return np.concatenate([a, e, t, q])
 
 def ins_outs(meshgrid, p):
+    p = preprocess(p)
+    print(p)
     rot = quat2mat(p[8:])
     # Rotate translation
-    t = quat_product(quat_product(p[8:], p[5:8]+[0]), quat_conjungate(p[8:]))
+    t = quat_product(quat_product(p[8:], np.concatenate([p[5:8], [0]])), quat_conjungate(p[8:]))
     # Rotate coordinate system
     m = np.einsum('ij,jabc->iabc', rot, meshgrid)
     # Calculate
@@ -38,6 +46,7 @@ def quat_conjungate(q):
     return np.array([-q[0], -q[1], -q[2], q[3]])
 
 def quat_product(q1, q2):
+    print(q1, q2)
     x1, y1, z1, w1 = q1
     x2, y2, z2, w2 = q2
     x = x1 * w2 + y1 * z2 - z1 * y2 + w1 * x2
@@ -46,24 +55,27 @@ def quat_product(q1, q2):
     w = -x1 * x2 - y1 * y2 - z1 * z2 + w1 * w2
     return [x, y, z, w]
 
-size = 64
-MESH = np.mgrid[-size/2:size/2, -size/2:size/2, -size/2:size/2].astype(np.float32)
+size = 16
 
+MESH = np.mgrid[-size/2:size/2, -size/2:size/2, -size/2:size/2].astype(np.float32)
+print(MESH)
 print(MESH.shape)
 pm = np.stack(MESH, axis=-1)
 #exit()
 #q = [0, 0, 0, 1]
 
 #params = [32.0, 16.0, 16.0, 0.541294, 0.574811, 0, 0, 0.0, 0, 0, 0.7071068, 0.7071068 ]
-params = [32.0, 16.0, 16.0, 1, 1, 0, 0, 32, 0, 0, 0.7071068, 0.7071068 ]
+params = [0.66,       0.86,       0.1,        0.098257,   0.360296 ,  0.4093721,
+ 0.5807533,  0.43790472 , 0, 0, 0, 1]
 
 t = time()
 
 
 t = time()
-md = ins_outs(MESH, params)
+md = ins_outs(MESH, np.array(params))
 print(time()-t)
-print(md)
+print(md.shape)
+print(MESH.shape)
 #print(md)
 
 

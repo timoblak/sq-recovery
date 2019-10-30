@@ -13,31 +13,26 @@ from tensorflow_graphics.geometry.transformation import quaternion as quat
 from tensorflow_graphics.geometry.transformation import rotation_matrix_3d as rmat
 
 size = 64
-BATCH = 4
-rng = list(np.arange(-size // 2, size // 2, 1).astype(np.float32))
+BATCH = 2
+rng = list(np.arange(-size // 2, size // 2, 1).astype(np.float64))
 tf.compat.v1.enable_eager_execution()
 
-p1 = [0.8267967, 0.8670515, 0.60345936, 0.541294, 0.574811, 0.65267265, 0.62242144, 0.35946697, -0.20178, -0.243733, 0.789973, -0.525188]
-#p1 = [16.5, 17, 13.75, 0.541294, 0.574811, 9.6, 8, -9.6,  0.20178, -0.243733, 0.789973, -0.525188]
-#p1 = [16.5, 17, 13.75, 0.541294, 0.574811, 9.6, 8, -9.6,  0,0,0,1]
-
-p2 = [16.5, 17, 13.75, 0.541294, 0.574811, 9.6, 8, -9.6,  0.20178, -0.243733, 0.789973, -0.525188]
-p3 = [0.4729304, 0.78276294, 0.58753353, 0.319357, 0.153823, 0.42050555,
-      0.5497313, 0.5376073, 0.38441, 0.462276, - 0.430949, 0.672914]
-p4 = [0.1976376, 0.67498684, 0.07473186, 0.760474, 0.81913, 0.5578802,
-      0.6376708, 0.6082252, 0.604945, 0.406145, 0.39579, - 0.558962]
-params = np.array([p1, p2, p3, p4], dtype=np.float32)
+#p1 = [0.987007678, 1.01116645, 0.397809595, 0.813163, 0.373285, 0.429682, 0.537141502, 0.640188515, -0.412896, 0.821542, 0.327043, 0.21824]
+p1 = [00.74  ,     0.5,        0.9,       0.804617,   0.116392,   0.60326314, 0.47432035, 0.3563426, 0, 0, 0, 1]
+#p2 = [1, 0.0883607417, 0, 0.01, 0.855431676, 0, 0.646699309, 0.932791829, 0.280940086, 0, 1, 0.558223188]
+p2 = [0.5, 0.5, 0.5, 0.01, 0.01, 0.5, 0.5, 0.5, 0, 0, 0, 1]
+params = np.array([p1, p2], dtype=np.float64)
 
 xyz_list = tf.meshgrid(rng, rng, rng, indexing="ij")
-xyz_grid = tf.stack(xyz_list)
-xyz_points = tf.stack(xyz_list, axis=-1)
-two = tf.constant(2, dtype=tf.float32)
+XYZ_GRID = tf.stack(xyz_list)
+XYZ_POINTS = tf.stack(xyz_list, axis=-1)
+TWO = tf.constant(2, dtype=tf.float64)
 
 
 def preprocess_sq(p):
     a, e, t, q = tf.split(p, (3, 2, 3, 4), axis=-1)
-    a = M.multiply(a, tf.constant(12.5)) + tf.constant(6.25)
-    t = M.multiply(t, tf.constant(64.)) + tf.constant(-32.)
+    a = M.multiply(a, tf.constant(12.5, dtype=tf.float64)) + tf.constant(6.25, dtype=tf.float64)
+    t = M.multiply(t, tf.constant(64., dtype=tf.float64)) + tf.constant(-32., dtype=tf.float64)
     return tf.concat([a, e, t, q], axis=-1)
 
 
@@ -48,23 +43,27 @@ def io1(batch, preprocess=True):
             p = preprocess_sq(p)
         results = []
         for i in range(batch):
-            rot = rmat.from_quaternion(p[i, 8:])
-            # Rotate translation
-            t = quat.rotate(p[i, 5:8], p[i, 8:])
-            # Rotate coordinate system
-            m = tf.einsum('ij,jabc->iabc', rot, xyz_grid)
-            # Calculate
+            a, e, t, q = tf.split(p[i], (3, 2, 3, 4), axis=-1)
+            # Create a rotation matrix from quaternion
+
+            rot = rmat.from_quaternion(q)
+            # Rotate translation vector using quaternion
+            t = quat.rotate(t, q)
+            # Rotate coordinate system using rotation matrix
+
+            m = tf.einsum('ij,jabc->iabc', rot, XYZ_GRID)
+
             # #### Calculate inside-outside equation ####
             # First the inner parts of equation (translate + divide with axis sizes)
-            x_translated = M.divide(m[0] - t[0], p[i, 0])
-            y_translated = M.divide(m[1] - t[1], p[i, 1])
-            z_translated = M.divide(m[2] - t[2], p[i, 2])
+            x_translated = M.divide(m[0] - t[0], a[0])
+            y_translated = M.divide(m[1] - t[1], a[1])
+            z_translated = M.divide(m[2] - t[2], a[2])
             # Then calculate all of the powers (make sure to calculate power over absolute values to avoid complex numbers)
-            A = M.pow(M.abs(x_translated), M.divide(two, p[i, 4]))
-            B = M.pow(M.abs(y_translated), M.divide(two, p[i, 4]))
-            C = M.pow(M.abs(z_translated), M.divide(two, p[i, 3]))
+            A = M.pow(M.abs(x_translated), M.divide(TWO, e[1]))
+            B = M.pow(M.abs(y_translated), M.divide(TWO, e[1]))
+            C = M.pow(M.abs(z_translated), M.divide(TWO, e[0]))
             D = A + B
-            E = M.pow(M.abs(D), M.divide(p[i, 4], p[i, 3]))
+            E = M.pow(M.abs(D), M.divide(e[1], e[0]))
             inout = E + C
 
             results.append(inout)
@@ -79,24 +78,27 @@ def io2(batch, preprocess=True):
         if preprocess:
             p = preprocess_sq(p)
         results = []
+
         for i in range(batch):
-            _, t, q = tf.split(p[i], (5, 3, 4), axis=-1)
+            a, e, t, q = tf.split(p[i], (3, 2, 3, 4), axis=-1)
             t = quat.rotate(t, q)
-            m = quat.rotate(xyz_points, q)
+            m = quat.rotate(XYZ_POINTS, q)
             m = tf.unstack(m, axis=-1)
 
-            # Rotate coordinate system
             # #### Calculate inside-outside equation ####
             # First the inner parts of equation (translate + divide with axis sizes)
-            x_translated = M.divide(m[0] - t[0], p[i, 0])
-            y_translated = M.divide(m[1] - t[1], p[i, 1])
-            z_translated = M.divide(m[2] - t[2], p[i, 2])
+            x_translated = M.divide(m[0] - t[0], a[0])
+            y_translated = M.divide(m[1] - t[1], a[1])
+            z_translated = M.divide(m[2] - t[2], a[2])
             # Then calculate all of the powers (make sure to calculate power over absolute values to avoid complex numbers)
-            A = M.pow(M.abs(x_translated), M.divide(two, p[i, 4]))
-            B = M.pow(M.abs(y_translated), M.divide(two, p[i, 4]))
-            C = M.pow(M.abs(z_translated), M.divide(two, p[i, 3]))
+            A = M.pow(M.abs(x_translated), M.divide(TWO, e[1]))
+            A = tf.Print(A, [tf.reduce_any(tf.math.is_inf(A))])
+            B = M.pow(M.abs(y_translated), M.divide(TWO, e[1]))
+            B = tf.Print(B, [tf.reduce_any(tf.math.is_inf(B))])
+            C = M.pow(M.abs(z_translated), M.divide(TWO, e[0]))
+            C = tf.Print(C, [tf.reduce_any(tf.math.is_inf(C))])
             D = A + B
-            E = M.pow(M.abs(D), M.divide(p[i, 4], p[i, 3]))
+            E = M.pow(M.abs(D), M.divide(e[1], e[0]))
             inout = E + C
 
             results.append(inout)
@@ -104,7 +106,15 @@ def io2(batch, preprocess=True):
     return ins_outs_2
 
 
-loss = io2(4, True)
+def chamfer_loss(ts1, ts2):
+    ts1 = tf.clip_by_value(tf.log(ts1), clip_value_min=0., clip_value_max=10000000)
+    ts2 = tf.clip_by_value(tf.log(ts2), clip_value_min=0., clip_value_max=10000000)
+
+    ab_diff = ts1 - ts2
+
+    return tf.reduce_mean(tf.abs(ab_diff)).numpy(), ab_diff.numpy()
+
+loss = io2(BATCH, True)
 
 t = time()
 b = loss(params)
@@ -113,9 +123,18 @@ print(time() - t)
 t = time()
 b = loss(params)
 print(time() - t)
+print(b.shape)
+#md1 = np.log(b[0].numpy())
+#md2 = np.log(b[1].numpy())
 
-md = b[0].numpy()
-MESH = xyz_grid.numpy()
+final_loss, final_diff = chamfer_loss(b[0], b[1])
+print(final_diff)
+print("Final loss is: " + str(final_loss))
+
+md1 = b[0].numpy()
+md2 = b[1].numpy()
+md3 = final_diff
+MESH = XYZ_GRID.numpy()
 print("-----------------")
 # assert (a == m[0]).all()
 
@@ -128,18 +147,42 @@ print("-----------------")
 from mpl_toolkits.mplot3d import Axes3D
 
 fig = plt.figure()
-ax = fig.gca(projection='3d')
+ax = fig.add_subplot(131, projection='3d')
 ax.set_aspect("auto")
-print(md)
-disp = (md < 1)
-#disp = (md >= 0)
+#print(md)
+disp1 = (md1 <= 1)
+disp2 = (md2 <= 1)
+disp3 = (md3 < np.inf)
+
 # yg = ax.scatter(MESH[0][:32], MESH[1][:32], MESH[2][:32], c=m_rot[0][:32].ravel(), marker='o', alpha=0.5)
 # yg = ax.scatter(MESH[0][:32], MESH[1][:32], MESH[2][:32], c=md[:32].ravel(), marker='o', alpha=0.5)
-yg = ax.scatter(MESH[0][disp], MESH[1][disp], MESH[2][disp], c=md[disp].ravel(), marker='o', alpha=0.3)
+yg = ax.scatter(MESH[0][disp1], MESH[1][disp1], MESH[2][disp1], c=md1[disp1].ravel(), marker='o', alpha=0.3)
 # yg = ax.scatter(MESH[0], MESH[1], MESH[2], c=md.ravel(), marker='o', alpha=0.5)
 ax.set(xlim=(-32, 32), ylim=(-32, 32), zlim=(-32, 32))
 ax.set_xlabel('X Label')
 ax.set_ylabel('Y Label')
 ax.set_zlabel('Z Label')
 
+ax = fig.add_subplot(132, projection='3d')
+ax.set_aspect("auto")
+# yg = ax.scatter(MESH[0][:32], MESH[1][:32], MESH[2][:32], c=m_rot[0][:32].ravel(), marker='o', alpha=0.5)
+# yg = ax.scatter(MESH[0][:32], MESH[1][:32], MESH[2][:32], c=md[:32].ravel(), marker='o', alpha=0.5)
+yg = ax.scatter(MESH[0][disp2], MESH[1][disp2], MESH[2][disp2], c=md2[disp2].ravel(), marker='o', alpha=0.3)
+# yg = ax.scatter(MESH[0], MESH[1], MESH[2], c=md.ravel(), marker='o', alpha=0.5)
+ax.set(xlim=(-32, 32), ylim=(-32, 32), zlim=(-32, 32))
+ax.set_xlabel('X Label')
+ax.set_ylabel('Y Label')
+ax.set_zlabel('Z Label')
+
+
+ax = fig.add_subplot(133, projection='3d')
+ax.set_aspect("auto")
+# yg = ax.scatter(MESH[0][:32], MESH[1][:32], MESH[2][:32], c=m_rot[0][:32].ravel(), marker='o', alpha=0.5)
+# yg = ax.scatter(MESH[0][:32], MESH[1][:32], MESH[2][:32], c=md[:32].ravel(), marker='o', alpha=0.5)
+yg = ax.scatter(MESH[0][disp3], MESH[1][disp3], MESH[2][disp3], c=md3[disp3].ravel(), marker='o', alpha=0.3)
+# yg = ax.scatter(MESH[0], MESH[1], MESH[2], c=md.ravel(), marker='o', alpha=0.5)
+ax.set(xlim=(-32, 32), ylim=(-32, 32), zlim=(-32, 32))
+ax.set_xlabel('X Label')
+ax.set_ylabel('Y Label')
+ax.set_zlabel('Z Label')
 plt.show()
