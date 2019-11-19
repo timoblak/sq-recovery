@@ -23,7 +23,6 @@ class ChamferLoss:
 
     @staticmethod
     def preprocess_sq(p):
-        print(p.shape)
         a, e, t = torch.split(p, (3, 2, 3))
         a = (a * 0.196) + 0.098
         #e = torch.clamp(e, 0.1, 1)
@@ -72,16 +71,14 @@ class ChamferLoss:
         a = self._ins_outs(pred)
         b = self._ins_outs(true)
 
-
-
-
-        diff = torch.log(a + self.eps) - torch.log(b + self.eps)
-
+        #diff = torch.log(a + self.eps) - torch.log(b + self.eps)
+        diff = a - b
         #print("Time: " + str(time() - start_t))
-        plot_render(self.xyz.cpu().numpy(), a[0].cpu().numpy())
-        #plot_render(self.xyz.cpu().numpy(), b[0].cpu().numpy())
-        print(a)
-        exit()
+
+        #plot_render(self.xyz.cpu().numpy(), a[0].cpu().numpy(), mode="in")
+        #plot_render(self.xyz.cpu().numpy(), b[0].cpu().numpy(), mode="in")
+        #print(a)
+        #exit()
         return torch.sqrt(torch.mean(torch.pow(diff, 2)))
 
 
@@ -122,16 +119,18 @@ class Dataset(data.Dataset):
 
 
 class SQNet(nn.Module):
-    def __init__(self):
+    def __init__(self, outputs, clip_values=False):
         super(SQNet, self).__init__()
         # Parameters
-        self.outputs = 8
+        self.outputs = outputs
+        self.clip_values = clip_values
 
         # Convolutions
         self.conv1 = nn.Conv2d(1, 32, kernel_size=7, stride=2, padding=(3, 3))
 
         self.conv2_1 = nn.Conv2d(32, 32, kernel_size=3, stride=1, padding=(1, 1))
-        self.conv2_2 = nn.Conv2d(32, 32, kernel_size=3, stride=2, padding=(1, 1))
+        self.conv2_2 = nn.Conv2d(32, 32, kernel_size=3, stride=1, padding=(1, 1))
+        self.conv2_3 = nn.Conv2d(32, 32, kernel_size=3, stride=2, padding=(1, 1))
 
         self.conv3_1 = nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=(1, 1))
         self.conv3_2 = nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=(1, 1))
@@ -149,7 +148,7 @@ class SQNet(nn.Module):
         self.fc1 = nn.Linear(256 * 8 * 8, self.outputs)
 
         # Batch norms
-        self.bn1 = nn.BatchNorm2d(32)
+        self.bn1 = nn.BatchNorm2d(32, affine= True)
         self.bn2 = nn.BatchNorm2d(64)
         self.bn3 = nn.BatchNorm2d(128)
         self.bn4 = nn.BatchNorm2d(256)
@@ -160,6 +159,7 @@ class SQNet(nn.Module):
 
         x = F.relu(self.bn1(self.conv2_1(x)))
         x = F.relu(self.bn1(self.conv2_2(x)))
+        x = F.relu(self.bn1(self.conv2_3(x)))
 
         x = F.relu(self.bn2(self.conv3_1(x)))
         x = F.relu(self.bn2(self.conv3_2(x)))
@@ -176,8 +176,18 @@ class SQNet(nn.Module):
         # Flatten
         x = x.view(-1, self.num_flat_features(x))
 
-        x = F.sigmoid(self.fc1(x))
+        x = self.fc1(x)
+        if self.clip_values:
+            x = self.clip_to_range(x)
         return x
+
+    @staticmethod
+    def clip_to_range(x):
+        a, e, t = torch.split(x, (3, 2, 3), dim=-1)
+        a = torch.clamp(a, min=0, max=1)
+        e = torch.clamp(e, min=0.01, max=1)
+        t = torch.clamp(t, min=0, max=1)
+        return torch.cat((a, e, t), dim=-1)
 
     @staticmethod
     def num_flat_features(x):
@@ -191,19 +201,17 @@ class SQNet(nn.Module):
 if __name__ == "__main__":
     device = torch.device("cuda:0")
     req_grad = False
-    loss = ChamferLoss(64, device)
+    loss = ChamferLoss(16, device)
     #25.000000, 49.000000, 55.000000, 0.084488, 0.751716, 99.890729, 164.551254, 155.331333
-    pred_p = torch.tensor([[1, 1, 0.6, 1, 0.75, 0.38, 0.64, 0.6]], dtype=torch.float32, requires_grad=req_grad).to(device)
-    true_p = torch.tensor([[0.5, 0.5, 0.5, 1, 1, 0.5, 0.6, 0.5]], dtype=torch.float32, requires_grad=req_grad).to(device)
+    pred_p = torch.tensor([[0.8184, 0.4989, 0.9407, 0.6035, 0.2144, 0.3787, 0.5676, 0.6420]], dtype=torch.float32, requires_grad=req_grad).to(device)
+    true_p = torch.tensor([[0.8200, 0.5000, 0.9400, 0.6019, 0.1960, 0.3890, 0.5606, 0.6412]], dtype=torch.float32, requires_grad=req_grad).to(device)
     print(pred_p.requires_grad)
-    l = loss(pred_p, pred_p)
+    l = loss(true_p, pred_p)
 
-    l.backward()
-    print(pred_p.grad)
     print(l)
     exit()
 
-    net = SQNet().to(device)
+    net = SQNet(8).to(device)
     summary(net, (1, 256, 256))
 
     a = cv2.imread("../data/data_iso/000000.bmp", 0)
