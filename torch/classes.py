@@ -66,6 +66,50 @@ class ChamferLoss:
             results.append(inout)
         return torch.stack(results)
 
+    def _ins_outs_bit(self, p):
+
+        p = p.double()
+        results = []
+        for i in range(p.shape[0]):
+            perameters = self.preprocess_sq(p[i])
+            a, e, t= torch.split(perameters, (3, 2, 3))
+
+            # Create a rotation matrix from quaternion
+
+            # rot = rmat.from_quaternion(q)
+
+            # Rotate translation vector using quaternion
+            # t = quat.rotate(t, q)
+
+            # Rotate coordinate system using rotation matrix
+
+            # m = tf.einsum('ij,jabc->iabc', rot, XYZ_GRID)
+
+            # TWO = tf.cast(TWO, tf.float64)
+
+            # #### Calculate inside-outside equation ####
+            # First the inner parts of equation (translate + divide with axis sizes)
+            x_translated = (self.xyz[0] - t[0]) / a[0]
+            y_translated = (self.xyz[1] - t[1]) / a[1]
+            z_translated = (self.xyz[2] - t[2]) / a[2]
+            # Then calculate all of the powers (make sure to calculate power over absolute values to avoid complex numbers)
+            A = torch.pow(torch.abs(x_translated), (2 / e[1]))#*torch.sign(x_translated)
+            B = torch.pow(torch.abs(y_translated), (2 / e[1]))#*torch.sign(y_translated)
+            C = torch.pow(torch.abs(z_translated), (2 / e[0]))#*torch.sign(z_translated)
+            D = A + B
+            E = torch.pow(torch.abs(D), (e[1] / e[0]))
+            inout = E + C
+
+            # Filter inout with logistic function
+            # out: 0, in: 1
+            # k defines slope of the step
+            k = 100
+            inout_bit = 1 / (1 + torch.exp(k * (inout - 1)))
+
+
+            results.append(inout_bit)
+        return torch.stack(results)
+
     def __call__(self, pred, true):
         start_t = time()
         a = self._ins_outs(pred)
