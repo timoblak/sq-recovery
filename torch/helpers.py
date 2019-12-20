@@ -2,11 +2,14 @@ import numpy as np
 import torch
 from torchviz import make_dot
 from matplotlib import pyplot as plt
+from matplotlib.lines import Line2D
+
+from time import sleep
 
 
-def plot_render(meshgrid, np_array, mode="all"):
+def plot_render(meshgrid, np_array, mode="all", figure=1):
     from mpl_toolkits.mplot3d import Axes3D
-    fig = plt.figure()
+    fig = plt.figure(figure)
     ax = fig.gca(projection='3d')
     ax.set_aspect("auto")
 
@@ -42,22 +45,23 @@ def plot_render(meshgrid, np_array, mode="all"):
     ax.set_xlabel('X Axis')
     ax.set_ylabel('Y Axis')
     ax.set_zlabel('Z Axis')
-    plt.show()
+
 
 def parse_csv(csvfile):
     with open(csvfile, "r") as f:
         s = f.read()
     lines = s.split("\n")
-    labels = {}
-    list_ids = []
+    labels = []
     print("Parsing csv " + csvfile)
     for line in lines:
         if line == "":
             continue
         split_line = line.split(",")
         # Get Image ID
-        label_id = split_line[0].split("/")[1].split(".")[0]
-        list_ids.append(label_id)
+
+        #label_id = split_line[0].split("/")[1].split(".")[0]
+        #list_ids.append(label_id)
+
         # Cast, normalize the values
         values = []
         for i in range(1, 9):
@@ -69,10 +73,10 @@ def parse_csv(csvfile):
             values.append(val)
         for i in range(-4, 0):
            values.append(float(split_line[i]))
-        labels[label_id] = np.array(values, dtype=np.float)
-    print("Size of data: " + str(len(list_ids)))
+        labels.append(np.array(values, dtype=np.float32))
+    print("Size of data: " + str(len(labels)))
     print("----------------------------------------------------------------")
-    return list_ids, labels
+    return labels
 
 
 def graph2img(net, filename="graph.png"):
@@ -103,3 +107,46 @@ def gray_to_jet(gray):
     blue = base(gray + 0.5)
     alpha = 1
     return red, green, blue, alpha
+
+
+def plot_grad_flow(named_parameters):
+    '''Plots the gradients flowing through different layers in the net during training.
+    Can be used for checking for possible gradient vanishing / exploding problems.
+
+    Usage: Plug this function in Trainer class after loss.backwards() as
+    "plot_grad_flow(self.model.named_parameters())" to visualize the gradient flow'''
+    ave_grads = []
+    max_grads = []
+    layers = []
+    for n, p in named_parameters:
+        if (p.requires_grad) and ("bias" not in n):
+            layers.append(n)
+            ave_grads.append(p.grad.abs().mean())
+            max_grads.append(p.grad.abs().max())
+    plt.bar(np.arange(len(max_grads)), max_grads, alpha=0.1, lw=1, color="c")
+    plt.bar(np.arange(len(max_grads)), ave_grads, alpha=0.1, lw=1, color="b")
+    plt.hlines(0, 0, len(ave_grads) + 1, lw=2, color="k")
+    plt.xticks(range(0, len(ave_grads), 1), layers, rotation="vertical")
+    plt.xlim(left=0, right=len(ave_grads))
+    plt.ylim(bottom=-0.001, top=0.02)  # zoom in on the lower gradient regions
+    plt.xlabel("Layers")
+    plt.ylabel("average gradient")
+    plt.title("Gradient flow")
+    plt.grid(True)
+    plt.legend([Line2D([0], [0], color="c", lw=4),
+                Line2D([0], [0], color="b", lw=4),
+                Line2D([0], [0], color="k", lw=4)], ['max-gradient', 'mean-gradient', 'zero-gradient'])
+
+def getBack(var_grad_fn):
+    print(var_grad_fn)
+    for n in var_grad_fn.next_functions:
+        if n[0]:
+            try:
+                sleep(1)
+                tensor = getattr(n[0], 'variable')
+                print(n[0])
+                print('Tensor with grad found:', tensor)
+                print(' - gradient:', tensor.grad)
+                print()
+            except AttributeError as e:
+                getBack(n[0])

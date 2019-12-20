@@ -1,12 +1,17 @@
 import cv2
 import torch
+import h5py
+import glob
+from tqdm import tqdm
 import numpy as np
 from time import time
 import torch.nn as nn
 import torch.nn.functional as F
 from torchsummary import summary
 from torch.utils import data
-from helpers import plot_render
+from helpers import plot_render, plot_grad_flow
+from matplotlib import pyplot as plt
+
 
 class ChamferLoss:
     def __init__(self, render_size, device):
@@ -23,19 +28,21 @@ class ChamferLoss:
 
     @staticmethod
     def preprocess_sq(p):
-        a, e, t = torch.split(p, (3, 2, 3))
-        a = (a * 0.196) + 0.098
+        a, t = torch.split(p, (3, 3))
+        #e = torch.tensor([1.0, 1.0], dtype=torch.float64, device="cuda:0")
         #e = torch.clamp(e, 0.1, 1)
+        #t = torch.clamp(t, 0, 1)
+        #a = torch.clamp(a, 0.01, 1)
+        a = (a * 0.196) + 0.098
         #t = (t * 64.) + -32.
-        return torch.cat([a, e, t], dim=-1)
+        return torch.cat([a, t], dim=-1)
 
     def _ins_outs(self, p):
-
         p = p.double()
         results = []
         for i in range(p.shape[0]):
             perameters = self.preprocess_sq(p[i])
-            a, e, t= torch.split(perameters, (3, 2, 3))
+            a, t = torch.split(perameters, (3, 3))
 
             # Create a rotation matrix from quaternion
 
@@ -55,58 +62,80 @@ class ChamferLoss:
             x_translated = (self.xyz[0] - t[0]) / a[0]
             y_translated = (self.xyz[1] - t[1]) / a[1]
             z_translated = (self.xyz[2] - t[2]) / a[2]
-            # Then calculate all of the powers (make sure to calculate power over absolute values to avoid complex numbers)
-            A = torch.pow(torch.abs(x_translated), (2 / e[1]))#*torch.sign(x_translated)
-            B = torch.pow(torch.abs(y_translated), (2 / e[1]))#*torch.sign(y_translated)
-            C = torch.pow(torch.abs(z_translated), (2 / e[0]))#*torch.sign(z_translated)
-            D = A + B
-            E = torch.pow(torch.abs(D), (e[1] / e[0]))
-            inout = E + C
 
+            A = torch.pow(x_translated, 2)
+            B = torch.pow(y_translated, 2)
+            C = torch.pow(z_translated, 2)
+
+            #A = torch.pow(A1, (1 / e[1]))# * torch.sign(x_translated)
+            #B = torch.pow(B1, (1 / e[1]))  # * torch.sign(y_translated)
+            #C = torch.pow(C1, (1 / e[0]))  # * torch.sign(z_translated)
+
+            D = A + B
+            E = D #torch.pow(torch.abs(D), (e[1] / e[0]))
+            inout = E + C
+            #inout = torch.pow(inout, e[0])
             results.append(inout)
         return torch.stack(results)
 
     def __call__(self, pred, true):
-        start_t = time()
         a = self._ins_outs(pred)
         b = self._ins_outs(true)
 
-        #diff = torch.log(a + self.eps) - torch.log(b + self.eps)
         diff = a - b
-        #print("Time: " + str(time() - start_t))
 
-        #plot_render(self.xyz.cpu().numpy(), a[0].cpu().numpy(), mode="in")
-        #plot_render(self.xyz.cpu().numpy(), b[0].cpu().numpy(), mode="in")
-        #print(a)
-        #exit()
+        #plot_render(self.xyz.cpu().numpy(), a[0].cpu().numpy(), mode="in", figure=1)
+        #plot_render(self.xyz.cpu().numpy(), b[0].cpu().numpy(), mode="in", figure=2)
+        #plt.show()
         return torch.sqrt(torch.mean(torch.pow(diff, 2)))
 
 
-class Dataset(data.Dataset):
-    def __init__(self, dataset_location, list_IDs, labels):
+class H5Dataset(data.Dataset):
+    def __init__(self, dataset_location, labels):
         self.labels = labels
-        self.list_IDs = list_IDs
         self.dataset_location = dataset_location
         self.ext = ".bmp"
+        self.h5_dataset_file = 'dataset.h5'
+
+        self.dataset = None
+        self.handle = None
+        self.build_dataset()
+        self.load_dataset()
 
     def __len__(self):
         """Denotes the total number of samples"""
-        return len(self.list_IDs)
+        return len(self.labels)
+
+    def load_dataset(self):
+        print("Opening dataset")
+        self.dataset = h5py.File(self.dataset_location + self.h5_dataset_file , 'r')
+
+    def close(self):
+        self.handle.close()
+
+    def build_dataset(self):
+        if glob.glob(self.dataset_location + self.h5_dataset_file ):
+            print("Using existing dataset" + str(self.dataset_location))
+            return
+
+        print("Building a new dataset " + str(self.dataset_location))
+        file_list = sorted(glob.glob1(self.dataset_location, "*" + self.ext))
+
+        with h5py.File(self.dataset_location + self.h5_dataset_file, 'w') as handle:
+            ds = handle.create_dataset("sq", (len(file_list), 1, 256, 256), dtype='f')
+            for i, img_name in enumerate(tqdm(file_list)):
+                ds[i] = self.load_image(img_name)
 
     def __getitem__(self, index):
         """Generates one sample of data"""
-        # Select sample
-        ID = self.list_IDs[index]
-
         # Load data and get label
-        X = self.load_image(ID)
-        y = self.load_label(ID)
+        X = self.dataset["sq"][index]
+        y = self.load_label(index)
+        return torch.from_numpy(X), torch.from_numpy(y)
 
-        return torch.from_numpy(X).float(), torch.from_numpy(y).float()
-
-    def load_image(self, ID):
+    def load_image(self, img_name):
         # Load image and reshape to (channels, height, width)
-        img = cv2.imread(self.dataset_location + ID + self.ext, 0).astype(np.float)
+        img = cv2.imread(self.dataset_location + img_name, 0).astype(np.float)
         img = np.expand_dims(img, -1)
         img = np.transpose(img, (2, 0, 1))
         # Do preprocessing
@@ -115,7 +144,8 @@ class Dataset(data.Dataset):
 
     def load_label(self, ID):
         # Select labels and preprocess
-        return self.labels[ID][:8] #### First 8 for isometric model ####
+        #### First 8 for isometric model ####
+        return np.concatenate([self.labels[ID][:3], self.labels[ID][5:8]])
 
 
 class SQNet(nn.Module):
@@ -181,12 +211,18 @@ class SQNet(nn.Module):
             x = self.clip_to_range(x)
         return x
 
+    def check_grads(self):
+        return
+        #for p in self.parameters():
+        #    print(torch.any(torch.isnan(p)))
+
+
     @staticmethod
     def clip_to_range(x):
         a, e, t = torch.split(x, (3, 2, 3), dim=-1)
-        a = torch.clamp(a, min=0, max=1)
-        e = torch.clamp(e, min=0.01, max=1)
-        t = torch.clamp(t, min=0, max=1)
+        a = torch.clamp(a, min=0.01, max=1)
+        e = torch.clamp(e, min=0.1, max=1)
+        t = torch.clamp(t, min=0.01, max=1)
         return torch.cat((a, e, t), dim=-1)
 
     @staticmethod
@@ -201,11 +237,18 @@ class SQNet(nn.Module):
 if __name__ == "__main__":
     device = torch.device("cuda:0")
     req_grad = False
-    loss = ChamferLoss(16, device)
-    #25.000000, 49.000000, 55.000000, 0.084488, 0.751716, 99.890729, 164.551254, 155.331333
-    pred_p = torch.tensor([[0.8184, 0.4989, 0.9407, 0.6035, 0.2144, 0.3787, 0.5676, 0.6420]], dtype=torch.float32, requires_grad=req_grad).to(device)
-    true_p = torch.tensor([[0.8200, 0.5000, 0.9400, 0.6019, 0.1960, 0.3890, 0.5606, 0.6412]], dtype=torch.float32, requires_grad=req_grad).to(device)
-    print(pred_p.requires_grad)
+    loss = ChamferLoss(32, device)
+
+    #pred_p = torch.tensor([[0.2638, 0.2600, 0.6582, 0.2709, 0.56000, 1.0000, 0.4428, 0.0100]],
+    #   device='cuda:0', dtype=torch.float64, requires_grad=req_grad)
+    pred_p = torch.tensor([[0.1, 0.1, 0.1, 1, 1, 1, 1, 1]],
+                          device='cuda:0', dtype=torch.float64, requires_grad=req_grad)
+    true_p = torch.tensor([[0.0084, 0.3302, 0.0191, 0.3786, 0.7311, 0.3982, 0.3462, 0.5740]],
+       device='cuda:0', dtype=torch.float64)
+
+    #pred_p = torch.tensor([[0.3633, 0.4566, 0.4327, 0.1267, 0.1300, 0.5209, 0.3704, 0.5967]], dtype=torch.float32, requires_grad=req_grad).to(device)
+    #true_p = torch.tensor([[0.3800, 0.4600, 0.4200, 0.1202, 0.1064, 0.5155, 0.3829, 0.5830]], dtype=torch.float32, requires_grad=req_grad).to(device)
+    #print(torch.autograd.gradcheck(loss.__call__, (true_p, pred_p)))
     l = loss(true_p, pred_p)
 
     print(l)
