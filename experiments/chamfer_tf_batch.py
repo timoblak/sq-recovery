@@ -18,9 +18,9 @@ rng = list(np.arange(-size // 2, size // 2, 1).astype(np.float64))
 tf.compat.v1.enable_eager_execution()
 
 #p1 = [0.987007678, 1.01116645, 0.397809595, 0.813163, 0.373285, 0.429682, 0.537141502, 0.640188515, -0.412896, 0.821542, 0.327043, 0.21824]
-p1 = [00.74  ,     0.5,        0.9,       0.804617,   0.116392,   0.60326314, 0.47432035, 0.3563426, 0, 0, 0, 1]
+p1 = [0.2, 0.6, 0.2, 1, 1, 0, 0, 0, 0, 0, 0.8509035, 0.525322]
 #p2 = [1, 0.0883607417, 0, 0.01, 0.855431676, 0, 0.646699309, 0.932791829, 0.280940086, 0, 1, 0.558223188]
-p2 = [0.5, 0.5, 0.5, 0.01, 0.01, 0.5, 0.5, 0.5, 0, 0, 0, 1]
+p2 = [0.2, 0.6, 0.2, 1, 1, 1, 1, 1, 0, 0, 0, 1]
 params = np.array([p1, p2], dtype=np.float64)
 
 xyz_list = tf.meshgrid(rng, rng, rng, indexing="ij")
@@ -48,7 +48,7 @@ def io1(batch, preprocess=True):
 
             rot = rmat.from_quaternion(q)
             # Rotate translation vector using quaternion
-            t = quat.rotate(t, q)
+            #t = quat.rotate(t, q)
             # Rotate coordinate system using rotation matrix
 
             m = tf.einsum('ij,jabc->iabc', rot, XYZ_GRID)
