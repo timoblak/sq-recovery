@@ -28,21 +28,21 @@ class ChamferLoss:
 
     @staticmethod
     def preprocess_sq(p):
-        a, t = torch.split(p, (3, 3))
-        #e = torch.tensor([1.0, 1.0], dtype=torch.float64, device="cuda:0")
+        a, e, t = torch.split(p, (3, 2, 3))
+        e = torch.tensor([1.0, 1.0], dtype=torch.float64, device="cuda:0")
         #e = torch.clamp(e, 0.1, 1)
         #t = torch.clamp(t, 0, 1)
         #a = torch.clamp(a, 0.01, 1)
         a = (a * 0.196) + 0.098
         #t = (t * 64.) + -32.
-        return torch.cat([a, t], dim=-1)
+        return torch.cat([a, e, t], dim=-1)
 
     def _ins_outs(self, p):
         p = p.double()
         results = []
         for i in range(p.shape[0]):
             perameters = self.preprocess_sq(p[i])
-            a, t = torch.split(perameters, (3, 3))
+            a, e, t = torch.split(perameters, (3, 2, 3))
 
             # Create a rotation matrix from quaternion
 
@@ -63,18 +63,18 @@ class ChamferLoss:
             y_translated = (self.xyz[1] - t[1]) / a[1]
             z_translated = (self.xyz[2] - t[2]) / a[2]
 
-            A = torch.pow(x_translated, 2)
-            B = torch.pow(y_translated, 2)
-            C = torch.pow(z_translated, 2)
+            A1 = torch.pow(x_translated, 2)
+            B1 = torch.pow(y_translated, 2)
+            C1 = torch.pow(z_translated, 2)
 
-            #A = torch.pow(A1, (1 / e[1]))# * torch.sign(x_translated)
-            #B = torch.pow(B1, (1 / e[1]))  # * torch.sign(y_translated)
-            #C = torch.pow(C1, (1 / e[0]))  # * torch.sign(z_translated)
+            A = torch.pow(A1, (1 / e[1]))
+            B = torch.pow(B1, (1 / e[1]))
+            C = torch.pow(C1, (1 / e[0]))
 
             D = A + B
-            E = D #torch.pow(torch.abs(D), (e[1] / e[0]))
+            E = torch.pow(torch.abs(D), (e[1] / e[0]))
             inout = E + C
-            #inout = torch.pow(inout, e[0])
+            inout = torch.pow(inout, e[1])
             results.append(inout)
         return torch.stack(results)
 
@@ -144,8 +144,8 @@ class H5Dataset(data.Dataset):
 
     def load_label(self, ID):
         # Select labels and preprocess
-        #### First 8 for isometric model ####
-        return np.concatenate([self.labels[ID][:3], self.labels[ID][5:8]])
+        # ### First 8 for isometric model ####
+        return self.labels[ID][:8]
 
 
 class SQNet(nn.Module):

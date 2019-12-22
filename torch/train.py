@@ -21,7 +21,7 @@ print("Using device: " + device_name)
 # ----- Parameters
 dataset_location = "../data/data_iso2/"
 dataset_location_val = "../data/data_iso_val2/"
-generator_params = {'batch_size': 32,
+generator_params = {'batch_size': 16,
                     'shuffle': False,
                     'num_workers': 0}
 max_epochs = 100
@@ -45,7 +45,7 @@ validation_set = H5Dataset(dataset_location_val, labels_val)
 validation_generator = data.DataLoader(validation_set, **generator_params)
 
 # ----- Net initialization
-net = SQNet(outputs=6, clip_values=False).to(device)
+net = SQNet(outputs=8, clip_values=False).to(device)
 summary(net, input_size=(1, 256, 256))
 
 # ----- Training config
@@ -75,18 +75,17 @@ for epoch in range(max_epochs):
         if epoch < 1:
             loss = loss_fn(pred_labels, true_labels)
         else:
-            #debug = True
+            debug = False
             loss = loss_fn2(pred_labels, true_labels)
 
             for g in optimizer.param_groups:
-                g['lr'] = 1e-6
+                g['lr'] = 1e-7
             #torch.nn.utils.clip_grad_norm_(net.parameters(), 1)
 
         #with torch.autograd.detect_anomaly():
         loss.backward()
 
         if debug:
-            total_norm = 0
             #for p in net.parameters():
             #    param_norm = p.grad.data.norm(2)
             #    total_norm += param_norm.item() ** 2
@@ -96,11 +95,11 @@ for epoch in range(max_epochs):
             print("---------------------NEW------------------------")
             print(pred_labels)
             print(true_labels)
-            print("             --------GRADS NORM--------                ")
+            #print("             --------GRADS NORM--------                ")
             #print(net.fc1.weight.grad)
-            print(total_norm)
-            print("             -------WEIGHTS BEFORE---------                ")
-            print(net.fc1.weight)
+            #print(total_norm)
+            #print("             -------WEIGHTS BEFORE---------                ")
+            #print(net.fc1.weight)
 
         # Update weights and reset accumulative grads
         optimizer.step()
@@ -108,9 +107,8 @@ for epoch in range(max_epochs):
         losses.append(np_loss)
 
         if debug:
-            print("             -------WEIGHTS AFTER---------                ")
-            print(net.fc1.weight)
-            print("\n\n")
+            #print("             -------WEIGHTS AFTER---------                ")
+            #print(net.fc1.weight)
             print("             -------LOSS---------                ")
             print(np.mean(losses[-10:]))
             sleep(0.5)
@@ -141,7 +139,6 @@ for epoch in range(max_epochs):
         for batch_idx, (data, true_labels) in enumerate(validation_generator):
 
             data, true_labels = data.to(device), true_labels.to(device)
-
 
             pred_labels = net(data)
             if epoch < 1:
