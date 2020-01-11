@@ -7,6 +7,30 @@ from matplotlib.lines import Line2D
 from time import sleep
 
 
+def save_model(path, epoch, model, optimizer, loss):
+
+    torch.save({
+        'epoch': epoch,
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+        'loss': loss
+    }, path)
+
+
+def load_model(path, model, optimizer):
+    print("Loading model: " + path)
+    checkpoint = torch.load(path)
+    model.load_state_dict(checkpoint['model_state_dict'])
+    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    epoch = checkpoint['epoch']
+    loss = checkpoint['loss']
+    return epoch, model, optimizer, loss
+
+
+def change_lr(opt, lr):
+    for g in opt.param_groups:
+        g['lr'] = lr
+
 def plot_render(meshgrid, np_array, mode="all", figure=1):
     from mpl_toolkits.mplot3d import Axes3D
     fig = plt.figure(figure)
