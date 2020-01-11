@@ -15,8 +15,13 @@ def plot_render(meshgrid, np_array, mode="all", figure=1):
 
     if mode == "all":
         disp = (np_array >= 0)
-    else:
+        opacity = 0.1
+    elif mode == "in":
         disp = (np_array < 1)
+        opacity = 0.1
+    elif mode == "bit":
+        disp = (np_array == 1)
+        opacity = 0
 
     np_array = np_array.ravel()
     clr = np.zeros(shape=(np_array.shape[0], 4))
@@ -27,11 +32,8 @@ def plot_render(meshgrid, np_array, mode="all", figure=1):
     for i in range(np_array.shape[0]):
         r, b, g, a = gray_to_jet(np_array[i])
         if not dsp[i]:
-            a = 0.1
+            a = opacity
         clr[i] = np.array([r, b, g, a])
-    print(disp.shape)
-    print(dsp.shape)
-    print(clr.shape)
 
     ax.scatter(
         meshgrid[0],
