@@ -46,16 +46,19 @@ class ChamferLoss:
     @staticmethod
     def preprocess_sq(p):
         a, e, t, q = torch.split(p, (3, 2, 3, 4))
-        a = (a * 0.196) + 0.098
-        e = torch.clamp(e, 0.1, 1)
+        a = torch.clamp(a, min=0.05, max=1)
+        e = torch.clamp(e, min=0.1, max=1)
+        t = torch.clamp(t, min=0.01, max=1)
         return torch.cat([a, e, t, q], dim=-1)
 
     def _ins_outs(self, p):
         p = p.double()
         results = []
         for i in range(p.shape[0]):
-            perameters = self.preprocess_sq(p[i])
-            a, e, t, q = torch.split(perameters, (3, 2, 3, 4))
+            parameters = self.preprocess_sq(p[i])
+
+            #print(i, parameters)
+            a, e, t, q = torch.split(parameters, (3, 2, 3, 4))
 
             # Create a rotation matrix from quaternion
             rot = mat_from_quaternion(q)
@@ -72,9 +75,11 @@ class ChamferLoss:
             y_translated = (m[1] - t[1]) / a[1]
             z_translated = (m[2] - t[2]) / a[2]
 
+
             A1 = torch.pow(x_translated, 2)
             B1 = torch.pow(y_translated, 2)
             C1 = torch.pow(z_translated, 2)
+
 
             A = torch.pow(A1, (1 / e[1]))
             B = torch.pow(B1, (1 / e[1]))
@@ -89,10 +94,9 @@ class ChamferLoss:
         return torch.stack(results)
 
     def __call__(self, pred, true):
+        #print("-------------------------------------------")
         a = self._ins_outs(pred)
         b = self._ins_outs(true)
-
-        diff = a - b
 
         #vis_a = a[0].detach().cpu().numpy()
         #vis_b = b[0].detach().cpu().numpy()
@@ -104,11 +108,24 @@ class ChamferLoss:
         #iou = np.bitwise_and(vis_a.astype(bool), vis_b.astype(bool))
         #plot_render(self.xyz.cpu().numpy(), iou.astype(int), mode="bit", figure=3)
         #plt.show()
+        """
+        for i, (space1, space2) in enumerate(zip(a, b)):
+            print((space1 - space2).max())
+            print((space1 - space2).min())
 
-        loss_val = torch.sqrt(torch.stack(list(map(torch.mean, torch.pow(diff, 2)))))
-        if self.reduce:
-            return loss_val.mean()
-        return loss_val
+            print(i, F.l1_loss(space1, space2, reduction="mean"))
+
+        print(F.mse_loss(a, b, reduction="mean"))
+        exit()
+        """
+        return F.l1_loss(a, b, reduction="mean")
+
+        #loss_val = torch.sqrt(torch.stack(list(map(torch.mean, torch.pow(diff, 2)))))
+        #if self.reduce:
+        #    return loss_val.mean()
+        #return loss_val
+
+
 
 
 class SQNet(nn.Module):
@@ -138,8 +155,8 @@ class SQNet(nn.Module):
         self.conv5_3 = nn.Conv2d(256, 256, kernel_size=3, stride=2, padding=(1, 1))
 
         # Fully connected
-        self.fc1 = nn.Linear(256 * 8 * 8, 256)
-        self.fc2 = nn.Linear(256, self.outputs)
+        self.fc1 = nn.Linear(256 * 8 * 8, self.outputs)
+        #self.fc2 = nn.Linear(256, self.outputs)
 
         # Batch norms
         self.bn1_1 = nn.BatchNorm2d(32)
@@ -181,8 +198,8 @@ class SQNet(nn.Module):
 
         # Flatten + output
         x = x.view(-1, self.num_flat_features(x))
-        x = self.drop(F.relu(self.fc1(x)))
-        x = self.fc2(x)
+        #x = self.drop(F.relu(self.fc1(x)))
+        x = self.fc1(x)
 
         if self.clip_values:
             x = self.clip_to_range(x)
@@ -198,7 +215,6 @@ class SQNet(nn.Module):
         a = torch.clamp(a, min=0.01, max=1)
         e = torch.clamp(e, min=0.1, max=1)
         t = torch.clamp(t, min=0.01, max=1)
-        q = q / torch.norm(q)
         return torch.cat((a, e, t, q), dim=-1)
 
     @staticmethod
@@ -276,15 +292,32 @@ class H5Dataset(data.Dataset):
 if __name__ == "__main__":
     device = torch.device("cuda:0")
     req_grad = False
-    loss = ChamferLoss(32, device, reduce=True)
+    loss = ChamferLoss(26, device, reduce=True)
+    loss2 = torch.nn.MSELoss(reduction="mean")
 
     #loss_chamfer(, true_labels)
 
+    true = torch.tensor(
+        [[0.1084,  0.2769,  0.1893,  0.3213,  0.7323,  0.6345,  0.5084,  0.4530,
+        -0.6100,  0.5794, -0.5103,  0.1780]], device='cuda:0')
+    pred = torch.tensor(
+
+        #[[ 0.2415, -0.0059,  0.1914,  0.2464, -0.2308, -0.0319, -0.1229, -1.1044, 0.8736, 0.4255, 0.2318, 0.0445]],
+        [[0.0500, 0.0500, 0.1128, 0.1000, 0.6181, 0.3611, 0.0100, 0.4949, 0.2348,
+        0.6032, 0.2051, 0.7341]],
+        device='cuda:0', requires_grad=True)
+
+
     l = loss(true, pred)
-    #l.backward()
-    print(l)
+    l.backward()
+
+    print("True: " + str(true))
+    print("Pred: " + str(pred))
     print("-----------")
-    #print(pred.grad)
+    print(l)
+    print(pred.grad)
+    print("-----------")
+    plt.show()
 
     exit()
     net = SQNet(8).to(device)

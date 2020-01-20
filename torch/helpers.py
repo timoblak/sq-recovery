@@ -1,11 +1,34 @@
+import os
 import numpy as np
 import torch
 from torchviz import make_dot
 from matplotlib import pyplot as plt
 from matplotlib.lines import Line2D
-
 from time import sleep
 
+
+def quat2mat(q):
+    # Transforms a quaternion into a rotation matrix
+    u_q = q / np.sqrt(np.square(q).sum())
+    x, y, z, w = u_q
+    M = [[1 - 2 * (y**2 + z**2), 2*x*y - 2*w*z, 2*x*z + 2*w*y],
+         [2*x*y + 2*w*z, 1 - 2*(x**2 + z**2), 2*y*z - 2*w*x],
+         [2*x*z - 2*w*y, 2*y*z + 2*w*x, 1 - 2*(x**2 + y**2)]]
+    return np.array(M)
+
+def get_command(scanner_loc, fn, params):
+    # Creates os command for the renderer
+    command = scanner_loc + "scanner " + fn + " "
+    dims = params[:3]
+    command += ("%f " * 3) % tuple(dims)
+    shape = params[3:5]
+    command += ("%f " * 2) % tuple(shape)
+    pos_new = params[5:8]
+    command += "%f %f %f " % tuple(pos_new.ravel())
+    M = params[8:]
+    command += ("%f " * 9) % tuple(M.ravel())
+    command += "\n"
+    return command
 
 def save_model(path, epoch, model, optimizer, loss):
 
@@ -26,6 +49,18 @@ def load_model(path, model, optimizer):
     loss = checkpoint['loss']
     return epoch, model, optimizer, loss
 
+def save_compare_images(params_true, params_pred):
+    print(params_true)
+    for i, (true, pred) in enumerate(zip(params_true, params_pred)):
+        M = quat2mat(true[-4:])
+        params = np.concatenate((true[:3] * 255., true[3:5], true[5:8] * 255, M.ravel()))
+        command = get_command("../", "examples/" + str(i) + "_true.bmp", params)
+        os.system(command)
+        M = quat2mat(pred[-4:])
+
+        params = np.concatenate((np.clip(pred[:3], 0.05, 1) * 255., np.clip(pred[3:5], 0.1, 1), np.clip(pred[5:8], 0, 1)* 255, M.ravel()))
+        command = get_command("../", "examples/" + str(i) + "_pred.bmp", params)
+        os.system(command)
 
 def change_lr(opt, lr):
     for g in opt.param_groups:
@@ -93,7 +128,8 @@ def parse_csv(csvfile):
         for i in range(1, 9):
             val = float(split_line[i])
             if i in [1, 2, 3]:
-                val = (val - 25) / 50
+                #val = (val - 25) / 50
+                val /= 255.0
             elif i in [6, 7, 8]:
                 val /= 255.0
             values.append(val)
