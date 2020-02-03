@@ -9,7 +9,7 @@ import torch.utils.data as data
 from torchsummary import summary
 from helpers import parse_csv, change_lr, save_model, load_model, save_compare_images
 from classes import H5Dataset, SQNet, ChamferLoss, QuaternionLoss
-
+import cv2
 
 # ----- CUDA
 device_name = "cuda:0" if torch.cuda.is_available() else "cpu"
@@ -26,12 +26,12 @@ GENERATOR_PARAMS = {
     'shuffle': True,
     'num_workers': 4
 }
-MAX_EPOCHS = 1000
-LEARNING_RATE = 1e-5
+MAX_EPOCHS = 20000
+LEARNING_RATE = 1e-3
 LOG_INTERVAL = 1
 RUNNING_MEAN = 100
 DEBUG = False
-PRETRAIN_EPOCHS = 2
+PRETRAIN_EPOCHS = 2000
 CONTINUE_TRAINING = False
 
 # ----- Datasets
@@ -48,15 +48,15 @@ training_generator = data.DataLoader(training_set, **GENERATOR_PARAMS)
 
 validation_set = H5Dataset(dataset_location_val, labels_val)
 validation_generator = data.DataLoader(validation_set, **{
-    'batch_size': 32,
+    'batch_size': 64,
     'shuffle': False,
     'num_workers': 4
 })
 
 # ----- Net initialization
-net = SQNet(outputs=12, clip_values=False).to(device)
+net = SQNet(outputs=10, clip_values=False).to(device)
 summary(net, input_size=(1, 256, 256))
-optimizer = optim.Adam(net.parameters(), lr=LEARNING_RATE)
+optimizer = optim.Adam(net.parameters(), lr=LEARNING_RATE, weight_decay=0)
 starting_epoch = 0
 if CONTINUE_TRAINING:
     print("Continuing with training...")
@@ -66,6 +66,7 @@ if CONTINUE_TRAINING:
 loss_mse = nn.MSELoss(reduction="mean")
 loss_chamfer = ChamferLoss(16, device)
 loss_quat = QuaternionLoss()
+scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.1, patience=0, verbose=True)
 
 # ----- Main loop
 best_val_loss = None
@@ -89,7 +90,7 @@ for epoch in range(starting_epoch, MAX_EPOCHS):
 
         if epoch < PRETRAIN_EPOCHS:
             pred_block, pred_quat = pred_labels
-            true_block, true_quat = torch.split(true_labels, (8, 4), dim=-1)
+            true_block, true_quat = torch.split(true_labels, (6, 4), dim=-1)
 
             loss1 = loss_mse(pred_block, true_block)
             loss2 = loss_quat(pred_quat, true_quat)
@@ -121,6 +122,7 @@ for epoch in range(starting_epoch, MAX_EPOCHS):
             print("---------------------LOSS------------------------")
             print(np_loss)
         if torch.any(torch.isnan(net.fc1.weight.grad)):
+            print("--------------- NAN GRADS!!!! ---------------")
             exit()
 
         if batch_idx % LOG_INTERVAL == 0 and not DEBUG:
@@ -144,7 +146,7 @@ for epoch in range(starting_epoch, MAX_EPOCHS):
 
             if epoch < PRETRAIN_EPOCHS:
                 pred_block, pred_quat = pred_labels
-                true_block, true_quat = torch.split(true_labels, (8, 4), dim=-1)
+                true_block, true_quat = torch.split(true_labels, (6, 4), dim=-1)
 
                 loss1 = loss_mse(pred_block, true_block)
                 loss2 = loss_quat(pred_quat, true_quat)
@@ -162,6 +164,7 @@ for epoch in range(starting_epoch, MAX_EPOCHS):
             np_loss = loss.item()
             val_losses.append(np_loss)
 
+
     val_loss_mean = np.mean(val_losses)
     if True:
         best_val_loss = np.mean(val_losses)
@@ -173,10 +176,11 @@ for epoch in range(starting_epoch, MAX_EPOCHS):
     print("------------------------------------------------------------------------")
     print("VAL PREDICTIONS: ")
     print("- PRED: ", pred_labels)
-    print("- TRUE: ", torch.split(true_labels, (8, 4), dim=-1))
+    print("- TRUE: ", torch.split(true_labels, (6, 4), dim=-1))
     print("------------------------------------------------------------------------")
     print('Validation Epoch: {} Step: {} [(100%)]\tLoss: {:,.6f} (Block: {:.6f}, Quat: {:.6f})'.format(epoch, batch_idx, val_loss_mean, np.mean(l1), np.mean(l2)))
-
+    print("------------------------------------------------------------------------")
+    scheduler.step(val_loss_mean)
 
 
 #training_set.close()
