@@ -31,7 +31,7 @@ LEARNING_RATE = 1e-3
 LOG_INTERVAL = 1
 RUNNING_MEAN = 100
 DEBUG = False
-PRETRAIN_EPOCHS = 2000
+PRETRAIN_EPOCHS = 8
 CONTINUE_TRAINING = False
 
 # ----- Datasets
@@ -48,7 +48,7 @@ training_generator = data.DataLoader(training_set, **GENERATOR_PARAMS)
 
 validation_set = H5Dataset(dataset_location_val, labels_val)
 validation_generator = data.DataLoader(validation_set, **{
-    'batch_size': 64,
+    'batch_size': 32,
     'shuffle': False,
     'num_workers': 4
 })
@@ -66,10 +66,11 @@ if CONTINUE_TRAINING:
 loss_mse = nn.MSELoss(reduction="mean")
 loss_chamfer = ChamferLoss(16, device)
 loss_quat = QuaternionLoss()
-scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.1, patience=0, verbose=True)
+scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=5, verbose=True, threshold=1e-2)
 
 # ----- Main loop
 best_val_loss = None
+changed = False
 for epoch in range(starting_epoch, MAX_EPOCHS):
     # ----- Data
     losses, val_losses = [], []
@@ -99,7 +100,9 @@ for epoch in range(starting_epoch, MAX_EPOCHS):
             l2.append(loss2.item())
             loss = loss1 + loss2
         else:
-            change_lr(optimizer, 1e-7)
+            if not changed:
+                change_lr(optimizer, 1e-5)
+                changed = True
             #print("=====================NEWW=======================")
             loss = loss_chamfer(torch.cat(pred_labels, dim=-1), true_labels)
 
