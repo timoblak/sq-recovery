@@ -69,9 +69,9 @@ class ChamferLossIso:
         a = self._ins_outs(pred)
         b = self._ins_outs(true)
 
-        plot_render(self.xyz.cpu().numpy(), a[0].detach().cpu().numpy(), mode="in", figure=1)
-        plot_render(self.xyz.cpu().numpy(), b[0].detach().cpu().numpy(), mode="in", figure=2)
-        plt.show()
+        #plot_render(self.xyz.cpu().numpy(), a[0].detach().cpu().numpy(), mode="in", figure=1)
+        #plot_render(self.xyz.cpu().numpy(), b[0].detach().cpu().numpy(), mode="in", figure=2)
+        #plt.show()
         return F.mse_loss(a, b)
 
         #diff = a - b
@@ -145,14 +145,13 @@ class ChamferLoss:
 
         return torch.stack(results)
 
-    def __call__(self, pred, true):
+    def __call__(self, true, pred):
         a = self._ins_outs(pred)
         b = self._ins_outs(true)
-
         diff = a - b
 
-        vis_a = a[0].detach().cpu().numpy()
-        vis_b = b[0].detach().cpu().numpy()
+        #vis_a = a[0].detach().cpu().numpy()
+        #vis_b = b[0].detach().cpu().numpy()
 
         #plot_render(self.xyz.cpu().numpy(), vis_a, mode="in", figure=1)
         #plot_render(self.xyz.cpu().numpy(), vis_b, mode="in", figure=2)
@@ -160,8 +159,8 @@ class ChamferLoss:
         #vis_b[vis_b <= 1] = 1; vis_b[vis_b > 1] = 0
         #iou = np.bitwise_and(vis_a.astype(bool), vis_b.astype(bool))
         #plot_render(self.xyz.cpu().numpy(), iou.astype(int), mode="bit", figure=3)
-#        plt.show()
-
+        #plt.show()
+        #return F.mse_loss(b, a)
         loss_val = torch.sqrt(torch.stack(list(map(torch.mean, torch.pow(diff, 2)))))
         if self.reduce:
             return loss_val.mean()
@@ -171,11 +170,11 @@ if __name__ == "__main__":
     try:
         device = torch.device("cuda:0")
         req_grad = False
-        closs_quat = ChamferLoss(26, device, reduce=True)
+        closs_quat = ChamferLoss(32, device, reduce=True)
         closs_iso = ChamferLossIso(26, device, reduce=True)
 
         loss_mse = torch.nn.MSELoss(reduction="mean")
-
+        w = [1, 0.001, 1, 1]
 
         #true = torch.tensor([[0.5630, 0.7245, 0.4229, 0.8618, 0.8556, 0.5738, 0.3802, 0.5493, 0, 0, 0, 1]], device='cuda:0')
         #pred = torch.tensor([[0.5630, 0.7245, 0.4229, 0.8618, 0.8556, 0.5738, 0.3802, 0.5493, 0, 0, 0, 1]], device='cuda:0', requires_grad=True)
@@ -183,54 +182,45 @@ if __name__ == "__main__":
         #true_mse = torch.tensor([[0.5630, 0.7245, 0.4229, 0.8618, 0.8556, 0.5738, 0.3802, 0.5493, 0, 0, 0, 1]], device='cuda:0')
         #pred_mse = torch.tensor([[0.5630, 0.7245, 0.4229, 0.8618, 0.8556, 0.5738, 0.3802, 0.5493, 0, 0, 0, 1]], device='cuda:0', requires_grad=True)
 
-        lr = 0.0001
-        grads = np.array([0, 0, 0, 0, 0, 0, 0, 0])
-        vec = np.array([0.2630, 0.6245, 0.2229, 1, 1, 0.5738, 0.3802, 0.9093])
+        lr = 0.000001
+        grads = np.array([0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.])
+        vec = np.array([0.0500, 0.0500, 0.1128, 0.1500, 0.6181, 0.3611, 0.0100, 0.4949, 0.2348, 0.6032, 0.2051, 0.7341])
+        iteration = 0
         while True:
 
             vec -= grads * lr
-            true_iso = torch.tensor([[0.5630, 0.7245, 0.4229, 1, 1, 0.5338, 0.3802, 0.5593]], device='cuda:0')
-            pred_iso = torch.tensor([vec], device='cuda:0', requires_grad=True)
+            true = torch.tensor([[0.1084, 0.2769, 0.1893, 0.3213, 0.7323, 0.6345, 0.5084, 0.4530, -0.6100, 0.5794, -0.5103, 0.1780]], device='cuda:0', dtype=torch.float64)
+            pred = torch.tensor([vec], device='cuda:0', requires_grad=True)
 
-            true_iso = torch.tensor([[0.5630, 0.7245, 0.4229, 1.0000, 1.0000, 0.5338, 0.3802, 0.5593]],
-                   device='cuda:0')
-            pred_iso = torch.tensor([[0.5485, 0.7017, 0.4249, 1.2284, 0.9437, 0.5336, 0.3814, 0.5595]],
-                   device='cuda:0', dtype=torch.float64, requires_grad=True)
+            a, e, t, q = torch.split(pred, (3, 2, 3, 4), dim=-1)
+            a_true, e_true, t_true, q_true = torch.split(true, (3, 2, 3, 4), dim=-1)
 
-            print(true_iso)
-            print(pred_iso)
-            l = closs_iso(true_iso, pred_iso)
+            print(true.dtype, pred.dtype)
+            l_a = closs_quat(true, torch.cat((a, e_true, t_true, q_true), dim=-1)) * w[0]
+            l_e = closs_quat(true, torch.cat((a_true, e, t_true, q_true), dim=-1)) * w[1]
+            l_t = closs_quat(true, torch.cat((a_true, e_true, t, q_true), dim=-1)) * w[2]
+            l_q = closs_quat(true, torch.cat((a_true, e_true, t_true, q), dim=-1)) * w[3]
+
+            l = l_a + l_e + l_t + l_q
             l.backward()
             print("-----ISOMETRY LOSS------")
+            print("Iteration " + str(iteration))
+            print("LR " + str(lr))
             print(l)
 
-            grads = pred_iso.grad.cpu().numpy()[0]
+            grads = pred.grad.cpu().numpy()[0]
             print(grads)
 
             print("----------------------------------------------------------------")
+            print(true)
+            print(pred)
             print("----------------------------------------------------------------")
-            del l
-            sleep(0.5)
 
-        """
-        l = closs_quat(true, pred)
-        l.backward()
-        print("-----QUATERNION LOSS------")
-        print(l)
-        print(pred.grad)
-        print("-----------")
-        """
+            iteration+= 1
+            if iteration % 550 == 0:
+                print("Changinh LR to " + str(lr))
+                lr *= 0.1
 
-        """
-        l = loss_mse(true_mse, pred_mse)
-        l.backward()
-        print("-----MSE LOSS------")
-        print(l)
-        print(pred_mse.grad)
-        print("-----------")
-        """
-
-        plt.show()
     except KeyboardInterrupt:
         print("INTERRUPT")
         plt.close("all")

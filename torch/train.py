@@ -22,16 +22,16 @@ dataset_location = "/media/panter/0EE434EAE434D625/Users/Panter/Documents/Tim/SU
 dataset_location_val = "/media/panter/0EE434EAE434D625/Users/Panter/Documents/Tim/SUPERBLOCKS/dataset_rot_val.h5"
 MODEL_LOCATION = "models/model.pt"
 GENERATOR_PARAMS = {
-    'batch_size': 32,
-    'shuffle': True,
+    'batch_size': 16,
+    'shuffle': False,
     'num_workers': 4
 }
 MAX_EPOCHS = 20000
-LEARNING_RATE = 1e-3
+LEARNING_RATE = 1e-4
 LOG_INTERVAL = 1
 RUNNING_MEAN = 100
 DEBUG = False
-PRETRAIN_EPOCHS = 8
+PRETRAIN_EPOCHS = 3
 CONTINUE_TRAINING = False
 
 # ----- Datasets
@@ -54,7 +54,7 @@ validation_generator = data.DataLoader(validation_set, **{
 })
 
 # ----- Net initialization
-net = SQNet(outputs=10, clip_values=False).to(device)
+net = SQNet(outputs=12, clip_values=False).to(device)
 summary(net, input_size=(1, 256, 256))
 optimizer = optim.Adam(net.parameters(), lr=LEARNING_RATE, weight_decay=0)
 starting_epoch = 0
@@ -91,7 +91,7 @@ for epoch in range(starting_epoch, MAX_EPOCHS):
 
         if epoch < PRETRAIN_EPOCHS:
             pred_block, pred_quat = pred_labels
-            true_block, true_quat = torch.split(true_labels, (6, 4), dim=-1)
+            true_block, true_quat = torch.split(true_labels, (8, 4), dim=-1)
 
             loss1 = loss_mse(pred_block, true_block)
             loss2 = loss_quat(pred_quat, true_quat)
@@ -101,10 +101,18 @@ for epoch in range(starting_epoch, MAX_EPOCHS):
             loss = loss1 + loss2
         else:
             if not changed:
-                change_lr(optimizer, 1e-5)
+                change_lr(optimizer, 1e-4)
                 changed = True
             #print("=====================NEWW=======================")
-            loss = loss_chamfer(torch.cat(pred_labels, dim=-1), true_labels)
+            a, e, t, q = torch.split(torch.cat(pred_labels, dim=-1), (3, 2, 3, 4), dim=-1)
+            a_true, e_true, t_true, q_true = torch.split(true_labels, (3, 2, 3, 4), dim=-1)
+
+            l_a = loss_chamfer(true_labels, torch.cat((a, e_true, t_true, q_true), dim=-1))
+            l_e = loss_chamfer(true_labels, torch.cat((a_true, e, t_true, q_true), dim=-1))
+            l_t = loss_chamfer(true_labels, torch.cat((a_true, e_true, t, q_true), dim=-1))
+            l_q = loss_chamfer(true_labels, torch.cat((a_true, e_true, t_true, q), dim=-1))
+
+            loss = l_a + l_e + l_t + l_q
 
         loss.backward()
 
@@ -149,7 +157,7 @@ for epoch in range(starting_epoch, MAX_EPOCHS):
 
             if epoch < PRETRAIN_EPOCHS:
                 pred_block, pred_quat = pred_labels
-                true_block, true_quat = torch.split(true_labels, (6, 4), dim=-1)
+                true_block, true_quat = torch.split(true_labels, (8, 4), dim=-1)
 
                 loss1 = loss_mse(pred_block, true_block)
                 loss2 = loss_quat(pred_quat, true_quat)
@@ -158,9 +166,17 @@ for epoch in range(starting_epoch, MAX_EPOCHS):
                 l2.append(loss2.item())
                 loss = loss1 + loss2
             else:
-                loss = loss_chamfer(torch.cat(pred_labels, dim=-1), true_labels)
+                a, e, t, q = torch.split(torch.cat(pred_labels, dim=-1), (3, 2, 3, 4), dim=-1)
+                a_true, e_true, t_true, q_true = torch.split(true_labels, (3, 2, 3, 4), dim=-1)
 
-            if batch_idx == 156:
+                l_a = loss_chamfer(true_labels, torch.cat((a, e_true, t_true, q_true), dim=-1))
+                l_e = loss_chamfer(true_labels, torch.cat((a_true, e, t_true, q_true), dim=-1))
+                l_t = loss_chamfer(true_labels, torch.cat((a_true, e_true, t, q_true), dim=-1))
+                l_q = loss_chamfer(true_labels, torch.cat((a_true, e_true, t_true, q), dim=-1))
+
+                loss = l_a + l_e + l_t + l_q
+
+            if False: #batch_idx == 156:
                 save_compare_images(true_labels.cpu().detach().numpy(),
                                     torch.cat(pred_labels, dim=-1).cpu().detach().numpy())
 
@@ -179,7 +195,7 @@ for epoch in range(starting_epoch, MAX_EPOCHS):
     print("------------------------------------------------------------------------")
     print("VAL PREDICTIONS: ")
     print("- PRED: ", pred_labels)
-    print("- TRUE: ", torch.split(true_labels, (6, 4), dim=-1))
+    print("- TRUE: ", torch.split(true_labels, (8, 4), dim=-1))
     print("------------------------------------------------------------------------")
     print('Validation Epoch: {} Step: {} [(100%)]\tLoss: {:,.6f} (Block: {:.6f}, Quat: {:.6f})'.format(epoch, batch_idx, val_loss_mean, np.mean(l1), np.mean(l2)))
     print("------------------------------------------------------------------------")

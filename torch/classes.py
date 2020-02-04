@@ -45,13 +45,13 @@ class ChamferLoss:
 
     @staticmethod
     def preprocess_sq(p):
-        a, t, q = torch.split(p, (3, 3, 4))
-        #a, e, t, q = torch.split(p, (3, 2, 3, 4))
+        #a, t, q = torch.split(p, (3, 3, 4))
+        a, e, t, q = torch.split(p, (3, 2, 3, 4))
         a = torch.clamp(a, min=0.05, max=1)
-        #e = torch.clamp(e, min=0.1, max=1)
+        e = torch.clamp(e, min=0.1, max=1)
         t = torch.clamp(t, min=0.01, max=1)
-        return torch.cat([a, t, q], dim=-1)
-        #return torch.cat([a, e, t, q], dim=-1)
+        #return torch.cat([a, t, q], dim=-1)
+        return torch.cat([a, e, t, q], dim=-1)
 
     def _ins_outs(self, p):
         p = p.double()
@@ -60,8 +60,8 @@ class ChamferLoss:
             parameters = self.preprocess_sq(p[i])
 
             #print(i, parameters)
-            #a, e, t, q = torch.split(parameters, (3, 2, 3, 4))
-            a, t, q = torch.split(parameters, (3, 3, 4))
+            a, e, t, q = torch.split(parameters, (3, 2, 3, 4))
+            #a, t, q = torch.split(parameters, (3, 3, 4))
 
             # Create a rotation matrix from quaternion
             rot = mat_from_quaternion(q)
@@ -83,26 +83,24 @@ class ChamferLoss:
             C1 = torch.pow(z_translated, 2)
 
 
-            #A = torch.pow(A1, (1 / e[1]))
-            #B = torch.pow(B1, (1 / e[1]))
-            #C = torch.pow(C1, (1 / e[0]))
-            #A = torch.pow(A1, (1 / e[1]))
-            #B = torch.pow(B1, (1 / e[1]))
-            #C = torch.pow(C1, (1 / e[0]))
+            A = torch.pow(A1, (1 / e[1]))
+            B = torch.pow(B1, (1 / e[1]))
+            C = torch.pow(C1, (1 / e[0]))
 
-            #D = A + B
-            #E = torch.pow(torch.abs(D), (e[1] / e[0]))
-            #inout = E + C
-            #inout = torch.pow(inout, e[1])
-            inout = A1 + B1 + C1
+            D = A + B
+            E = torch.pow(torch.abs(D), (e[1] / e[0]))
+            inout = E + C
+            inout = torch.pow(inout, e[1])
+            #inout = A1 + B1 + C1
             results.append(inout)
 
         return torch.stack(results)
 
-    def __call__(self, pred, true):
+    def __call__(self, true, pred):
         #print("-------------------------------------------")
-        a = self._ins_outs(pred)
-        b = self._ins_outs(true)
+
+        a = self._ins_outs(true)
+        b = self._ins_outs(pred)
 
         #vis_a = a[0].detach().cpu().numpy()
         #vis_b = b[0].detach().cpu().numpy()
@@ -125,7 +123,7 @@ class ChamferLoss:
         exit()
         """
         return F.l1_loss(a, b, reduction="mean")
-
+        #diff = a - b
         #loss_val = torch.sqrt(torch.stack(list(map(torch.mean, torch.pow(diff, 2)))))
         #if self.reduce:
         #    return loss_val.mean()
@@ -211,7 +209,7 @@ class SQNet(nn.Module):
             x = self.clip_to_range(x)
 
         # Normalize quaternions
-        others, q = torch.split(x, (6, 4), dim=-1)
+        others, q = torch.split(x, (8, 4), dim=-1)
         q = F.normalize(q)
         return others, q
 
@@ -272,7 +270,7 @@ class H5Dataset(data.Dataset):
         """Generates one sample of data"""
         # Load data and get label
         #t_start = time()
-
+        #index = 0
         with h5py.File(self.h5_filepath, 'r') as db:
             X = db["sq"][index]
 
@@ -292,7 +290,7 @@ class H5Dataset(data.Dataset):
     def load_label(self, ID):
         # Select labels and preprocess
         # ### First 8 for isometric model ####
-        return self.labels[ID][:10] # TODO:
+        return self.labels[ID][:12]
 
 
 if __name__ == "__main__":
@@ -304,16 +302,26 @@ if __name__ == "__main__":
     #loss_chamfer(, true_labels)
 
     true = torch.tensor(
-        #[[0.1084,  0.2769,  0.1893,  0.3213,  0.7323,  0.6345,  0.5084,  0.4530, -0.6100,  0.5794, -0.5103,  0.1780]],
-        [[0.1084, 0.2769, 0.1893, 0.6345, 0.5084, 0.4530, -0.6100, 0.5794, -0.5103, 0.1780]], device='cuda:0')
+        [[ 0.1084,  0.2769,  0.1893,  0.3213,  0.7323,  0.6345,  0.5084,  0.4530,
+         -0.6100,  0.5794, -0.5103,  0.1780]], device='cuda:0')
+        #[[0.1084, 0.2769, 0.1893, 0.6345, 0.5084, 0.4530, -0.6100, 0.5794, -0.5103, 0.1780]]
+
     pred = torch.tensor(
         #[[ 0.2415, -0.0059,  0.1914,  0.2464, -0.2308, -0.0319, -0.1229, -1.1044, 0.8736, 0.4255, 0.2318, 0.0445]],
-        #[[0.0500, 0.0500, 0.1128, 0.1000, 0.6181, 0.3611, 0.0100, 0.4949, 0.2348, 0.6032, 0.2051, 0.7341]],
-        [[0.0500, 0.0500, 0.1128, 0.3611, 0.0100, 0.4949, 0.2348, 0.6032, 0.2051, 0.7341]],
+        [[0.1084, 0.2769, 0.1893, 0.2517, 0.5858, 0.6345, 0.5084, 0.4530, 0.1782,
+         0.5103, 0.5794, 0.6100]],
+        #[[0.0500, 0.0500, 0.1128, 0.3611, 0.0100, 0.4949, 0.2348, 0.6032, 0.2051, 0.7341]],
         device='cuda:0', requires_grad=True)
 
+    a, e, t, q = torch.split(pred, (3, 2, 3, 4), dim=-1)
+    a_true, e_true, t_true, q_true = torch.split(true, (3, 2, 3, 4), dim=-1)
 
-    l = loss(true, pred)
+    l_a = loss(true, torch.cat((a, e_true, t_true, q_true), dim=-1))
+    l_e = loss(true, torch.cat((a_true, e, t_true, q_true), dim=-1))
+    l_t = loss(true, torch.cat((a_true, e_true, t, q_true), dim=-1))
+    l_q = loss(true, torch.cat((a_true, e_true, t_true, q), dim=-1))
+
+    l = l_a + l_e + l_t + l_q
     l.backward()
 
     print("True: " + str(true))

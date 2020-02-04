@@ -130,10 +130,9 @@ def parse_csv(csvfile):
             if i in [1, 2, 3]:
                 #val = (val - 25) / 50
                 val /= 255.0
-                values.append(val)  # delete
             elif i in [6, 7, 8]:
                 val /= 255.0
-                values.append(val)  # delete \t
+            values.append(val)  # delete \t
         for i in range(-4, 0):
             values.append(float(split_line[i]))
         labels.append(np.array(values, dtype=np.float32))
