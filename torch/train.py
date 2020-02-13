@@ -3,12 +3,13 @@ import math
 import torch
 import numpy as np
 from time import sleep, time
+import torch.nn.functional as F
 import torch.nn as nn
 import torch.optim as optim
 import torch.utils.data as data
 from torchsummary import summary
 from helpers import parse_csv, change_lr, save_model, load_model, save_compare_images
-from classes import H5Dataset, SQNet, ChamferLoss, QuaternionLoss
+from classes import H5Dataset, SQNet, ChamferLoss, QuaternionLoss, RotLoss
 import cv2
 
 # ----- CUDA
@@ -22,7 +23,7 @@ dataset_location = "/media/panter/0EE434EAE434D625/Users/Panter/Documents/Tim/SU
 dataset_location_val = "/media/panter/0EE434EAE434D625/Users/Panter/Documents/Tim/SUPERBLOCKS/dataset_rot_val.h5"
 MODEL_LOCATION = "models/model.pt"
 GENERATOR_PARAMS = {
-    'batch_size': 16,
+    'batch_size': 32,
     'shuffle': False,
     'num_workers': 4
 }
@@ -31,7 +32,7 @@ LEARNING_RATE = 1e-4
 LOG_INTERVAL = 1
 RUNNING_MEAN = 100
 DEBUG = False
-PRETRAIN_EPOCHS = 3
+PRETRAIN_EPOCHS = 0
 CONTINUE_TRAINING = False
 
 # ----- Datasets
@@ -48,15 +49,16 @@ training_generator = data.DataLoader(training_set, **GENERATOR_PARAMS)
 
 validation_set = H5Dataset(dataset_location_val, labels_val)
 validation_generator = data.DataLoader(validation_set, **{
-    'batch_size': 32,
+    'batch_size': 4,
     'shuffle': False,
     'num_workers': 4
 })
 
 # ----- Net initialization
-net = SQNet(outputs=12, clip_values=False).to(device)
+net = SQNet(outputs=4, clip_values=False).to(device)
 summary(net, input_size=(1, 256, 256))
 optimizer = optim.Adam(net.parameters(), lr=LEARNING_RATE, weight_decay=0)
+#optimizer = optim.SGD(net.parameters(), lr=0.01)
 starting_epoch = 0
 if CONTINUE_TRAINING:
     print("Continuing with training...")
@@ -66,7 +68,8 @@ if CONTINUE_TRAINING:
 loss_mse = nn.MSELoss(reduction="mean")
 loss_chamfer = ChamferLoss(16, device)
 loss_quat = QuaternionLoss()
-scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=5, verbose=True, threshold=1e-2)
+loss_rot = RotLoss(32, device)
+scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.1, patience=0, verbose=True, threshold=1e-2)
 
 # ----- Main loop
 best_val_loss = None
@@ -81,14 +84,18 @@ for epoch in range(starting_epoch, MAX_EPOCHS):
     for batch_idx, (data, true_labels) in enumerate(training_generator):
         # Transfer to GPU
         data, true_labels = data.to(device), true_labels.to(device)
+        true_labels.requires_grad = False
         optimizer.zero_grad()
-
+        #print(true_labels)
 
         # Run forward pass
         #t_start = time()
         pred_labels = net(data)
         #print("Net predict: ", time() - t_start)
-
+        # print(pred_labels)
+        #print(F.normalize(pred_labels))
+        #print(true_labels)
+        #print("--------------------------------------------------------")
         if epoch < PRETRAIN_EPOCHS:
             pred_block, pred_quat = pred_labels
             true_block, true_quat = torch.split(true_labels, (8, 4), dim=-1)
@@ -101,18 +108,19 @@ for epoch in range(starting_epoch, MAX_EPOCHS):
             loss = loss1 + loss2
         else:
             if not changed:
-                change_lr(optimizer, 1e-4)
+                #change_lr(optimizer, 1e-4)
                 changed = True
             #print("=====================NEWW=======================")
-            a, e, t, q = torch.split(torch.cat(pred_labels, dim=-1), (3, 2, 3, 4), dim=-1)
-            a_true, e_true, t_true, q_true = torch.split(true_labels, (3, 2, 3, 4), dim=-1)
+            #a, e, t, q = torch.split(torch.cat(pred_labels, dim=-1), (3, 2, 3, 4), dim=-1)
+            #a_true, e_true, t_true, q_true = torch.split(true_labels, (3, 2, 3, 4), dim=-1)
 
-            l_a = loss_chamfer(true_labels, torch.cat((a, e_true, t_true, q_true), dim=-1))
-            l_e = loss_chamfer(true_labels, torch.cat((a_true, e, t_true, q_true), dim=-1))
-            l_t = loss_chamfer(true_labels, torch.cat((a_true, e_true, t, q_true), dim=-1))
-            l_q = loss_chamfer(true_labels, torch.cat((a_true, e_true, t_true, q), dim=-1))
+            #l_a = loss_chamfer(true_labels, torch.cat((a, e_true, t_true, q_true), dim=-1))
+            #l_e = loss_chamfer(true_labels, torch.cat((a_true, e, t_true, q_true), dim=-1))
+            #l_t = loss_chamfer(true_labels, torch.cat((a_true, e_true, t, q_true), dim=-1))
+            #l_q = loss_chamfer(true_labels, torch.cat((a_true, e_true, t_true, q), dim=-1))
+            #l_q = loss_chamfer(true_labels, pred_labels)
 
-            loss = l_a + l_e + l_t + l_q
+            loss = loss_rot(true_labels, pred_labels)  # l_a + l_e + l_t + l_q
 
         loss.backward()
 
@@ -147,6 +155,7 @@ for epoch in range(starting_epoch, MAX_EPOCHS):
     print('Train Epoch: {} Step: {} [(100%)]\tLoss: {:.6f}'.format(epoch, batch_idx, np.mean(losses)))
 
     # Validation
+
     net.eval()
     l1, l2 = [0], [0]
     with torch.no_grad():
@@ -166,23 +175,23 @@ for epoch in range(starting_epoch, MAX_EPOCHS):
                 l2.append(loss2.item())
                 loss = loss1 + loss2
             else:
-                a, e, t, q = torch.split(torch.cat(pred_labels, dim=-1), (3, 2, 3, 4), dim=-1)
-                a_true, e_true, t_true, q_true = torch.split(true_labels, (3, 2, 3, 4), dim=-1)
+                #a, e, t, q = torch.split(torch.cat(pred_labels, dim=-1), (3, 2, 3, 4), dim=-1)
+                #a_true, e_true, t_true, q_true = torch.split(true_labels, (3, 2, 3, 4), dim=-1)
 
-                l_a = loss_chamfer(true_labels, torch.cat((a, e_true, t_true, q_true), dim=-1))
-                l_e = loss_chamfer(true_labels, torch.cat((a_true, e, t_true, q_true), dim=-1))
-                l_t = loss_chamfer(true_labels, torch.cat((a_true, e_true, t, q_true), dim=-1))
-                l_q = loss_chamfer(true_labels, torch.cat((a_true, e_true, t_true, q), dim=-1))
+                #l_a = loss_chamfer(true_labels, torch.cat((a, e_true, t_true, q_true), dim=-1))
+                #l_e = loss_chamfer(true_labels, torch.cat((a_true, e, t_true, q_true), dim=-1))
+                #l_t = loss_chamfer(true_labels, torch.cat((a_true, e_true, t, q_true), dim=-1))
+                #l_q = loss_chamfer(true_labels, torch.cat((a_true, e_true, t_true, q), dim=-1))
+                #l_q = loss_chamfer(true_labels, pred_labels)
 
-                loss = l_a + l_e + l_t + l_q
+                loss = loss_rot(true_labels, pred_labels)# l_a + l_e + l_t + l_q
 
-            if False: #batch_idx == 156:
-                save_compare_images(true_labels.cpu().detach().numpy(),
-                                    torch.cat(pred_labels, dim=-1).cpu().detach().numpy())
+            #if False: #batch_idx == 156:
+            #    save_compare_images(true_labels.cpu().detach().numpy(),
+            #                        torch.cat(pred_labels, dim=-1).cpu().detach().numpy())
 
             np_loss = loss.item()
             val_losses.append(np_loss)
-
 
     val_loss_mean = np.mean(val_losses)
     if True:
@@ -195,7 +204,9 @@ for epoch in range(starting_epoch, MAX_EPOCHS):
     print("------------------------------------------------------------------------")
     print("VAL PREDICTIONS: ")
     print("- PRED: ", pred_labels)
-    print("- TRUE: ", torch.split(true_labels, (8, 4), dim=-1))
+    print("- PRED norm: ", F.normalize(pred_labels))
+    print("- TRUE: ", true_labels)
+    # print("- TRUE: ", torch.split(true_labels, (8, 4), dim=-1))
     print("------------------------------------------------------------------------")
     print('Validation Epoch: {} Step: {} [(100%)]\tLoss: {:,.6f} (Block: {:.6f}, Quat: {:.6f})'.format(epoch, batch_idx, val_loss_mean, np.mean(l1), np.mean(l2)))
     print("------------------------------------------------------------------------")

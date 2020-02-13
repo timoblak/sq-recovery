@@ -146,6 +146,7 @@ class ChamferLoss:
         return torch.stack(results)
 
     def __call__(self, true, pred):
+        pred = F.normalize(pred, dim=-1)
         a = self._ins_outs(pred)
         b = self._ins_outs(true)
         diff = a - b

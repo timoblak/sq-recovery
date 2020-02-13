@@ -66,7 +66,7 @@ def change_lr(opt, lr):
     for g in opt.param_groups:
         g['lr'] = lr
 
-def plot_render(meshgrid, np_array, mode="all", figure=1):
+def plot_render(meshgrid, np_array, mode="all", figure=1, lims=(0, 1), eps=0.1):
     from mpl_toolkits.mplot3d import Axes3D
     fig = plt.figure(figure)
     ax = fig.gca(projection='3d')
@@ -81,7 +81,9 @@ def plot_render(meshgrid, np_array, mode="all", figure=1):
     elif mode == "bit":
         disp = (np_array == 1)
         opacity = 0
-
+    elif mode == "shell":
+        disp = (np_array < 1+eps) & (np_array > 1-eps)
+        opacity = 0
     np_array = np_array.ravel()
     clr = np.zeros(shape=(np_array.shape[0], 4))
     dsp = disp.ravel()
@@ -102,11 +104,22 @@ def plot_render(meshgrid, np_array, mode="all", figure=1):
         #np_array[disp].ravel(), marker='o', alpha=0.3
     )
 
-    ax.set(xlim=(0, 1), ylim=(0, 1), zlim=(0, 1))
+    ax.set(xlim=lims, ylim=lims, zlim=lims)
     ax.set_xlabel('X Axis')
     ax.set_ylabel('Y Axis')
     ax.set_zlabel('Z Axis')
 
+
+def plot_points(xs, ys, zs, figure=2, lims=(-1, 1), subplot=111):
+    from mpl_toolkits.mplot3d import Axes3D
+    fig = plt.figure(figure)
+    ax = fig.add_subplot(subplot, projection='3d')
+    ax.set_aspect("auto")
+    ax.scatter(xs, ys, zs, marker='o')
+    ax.set(xlim=lims, ylim=lims, zlim=lims)
+    ax.set_xlabel('X Axis')
+    ax.set_ylabel('Y Axis')
+    ax.set_zlabel('Z Axis')
 
 def parse_csv(csvfile):
     with open(csvfile, "r") as f:
