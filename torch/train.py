@@ -9,7 +9,7 @@ import torch.optim as optim
 import torch.utils.data as data
 from torchsummary import summary
 from helpers import parse_csv, change_lr, save_model, load_model, save_compare_images
-from classes import H5Dataset, SQNet, ChamferLoss, QuaternionLoss, RotLoss
+from classes import H5Dataset, SQNet, ChamferLoss, QuaternionLoss, RotLoss, ChamferQuatLoss
 import cv2
 
 # ----- CUDA
@@ -19,12 +19,14 @@ print("Using device: " + device_name)
 #cudnn.benchmark = True
 
 # ----- Parameters
-dataset_location = "/media/panter/0EE434EAE434D625/Users/Panter/Documents/Tim/SUPERBLOCKS/dataset_rot.h5"
-dataset_location_val = "/media/panter/0EE434EAE434D625/Users/Panter/Documents/Tim/SUPERBLOCKS/dataset_rot_val.h5"
+dataset_location = "/media/panter/0EE434EAE434D625/Users/Panter/Documents/Tim/SUPERBLOCKS/"
+dataset_location_val = "/media/panter/0EE434EAE434D625/Users/Panter/Documents/Tim/SUPERBLOCKS/"
+# dataset_location = "../data/data_rot/dataset_rot.h5"
+# dataset_location_val = "../data/data_val/dataset_rot_val.h5"
 MODEL_LOCATION = "models/model.pt"
 GENERATOR_PARAMS = {
     'batch_size': 32,
-    'shuffle': False,
+    'shuffle': True,
     'num_workers': 4
 }
 MAX_EPOCHS = 20000
@@ -44,12 +46,12 @@ labels_val = parse_csv("../data/annotations/data_rot_val2.csv")
 print("Dataset split to: train - " + str(len(labels)) + ", val - " + str(len(labels_val)))
 
 # ----- Generators
-training_set = H5Dataset(dataset_location, labels)
+training_set = H5Dataset(dataset_location, labels, dataset_file="dataset_rot.h5")
 training_generator = data.DataLoader(training_set, **GENERATOR_PARAMS)
 
-validation_set = H5Dataset(dataset_location_val, labels_val)
+validation_set = H5Dataset(dataset_location_val, labels_val, dataset_file="dataset_rot_val.h5")
 validation_generator = data.DataLoader(validation_set, **{
-    'batch_size': 4,
+    'batch_size': 8,
     'shuffle': False,
     'num_workers': 4
 })
@@ -69,6 +71,7 @@ loss_mse = nn.MSELoss(reduction="mean")
 loss_chamfer = ChamferLoss(16, device)
 loss_quat = QuaternionLoss()
 loss_rot = RotLoss(32, device)
+loss_chamfer_quat = ChamferQuatLoss(32, device)
 scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.1, patience=0, verbose=True, threshold=1e-2)
 
 # ----- Main loop
@@ -82,19 +85,14 @@ for epoch in range(starting_epoch, MAX_EPOCHS):
     # Training
 
     for batch_idx, (data, true_labels) in enumerate(training_generator):
+
         # Transfer to GPU
         data, true_labels = data.to(device), true_labels.to(device)
         true_labels.requires_grad = False
         optimizer.zero_grad()
-        #print(true_labels)
 
-        # Run forward pass
-        #t_start = time()
         pred_labels = net(data)
-        #print("Net predict: ", time() - t_start)
-        # print(pred_labels)
-        #print(F.normalize(pred_labels))
-        #print(true_labels)
+
         #print("--------------------------------------------------------")
         if epoch < PRETRAIN_EPOCHS:
             pred_block, pred_quat = pred_labels
@@ -107,22 +105,10 @@ for epoch in range(starting_epoch, MAX_EPOCHS):
             l2.append(loss2.item())
             loss = loss1 + loss2
         else:
-            if not changed:
-                #change_lr(optimizer, 1e-4)
-                changed = True
-            #print("=====================NEWW=======================")
-            #a, e, t, q = torch.split(torch.cat(pred_labels, dim=-1), (3, 2, 3, 4), dim=-1)
-            #a_true, e_true, t_true, q_true = torch.split(true_labels, (3, 2, 3, 4), dim=-1)
-
-            #l_a = loss_chamfer(true_labels, torch.cat((a, e_true, t_true, q_true), dim=-1))
-            #l_e = loss_chamfer(true_labels, torch.cat((a_true, e, t_true, q_true), dim=-1))
-            #l_t = loss_chamfer(true_labels, torch.cat((a_true, e_true, t, q_true), dim=-1))
-            #l_q = loss_chamfer(true_labels, torch.cat((a_true, e_true, t_true, q), dim=-1))
-            #l_q = loss_chamfer(true_labels, pred_labels)
-
             loss = loss_rot(true_labels, pred_labels)  # l_a + l_e + l_t + l_q
 
         loss.backward()
+
 
         # Update weights and reset accumulative grads
         optimizer.step()
@@ -164,6 +150,7 @@ for epoch in range(starting_epoch, MAX_EPOCHS):
             data, true_labels = data.to(device), true_labels.to(device)
             pred_labels = net(data)
 
+
             if epoch < PRETRAIN_EPOCHS:
                 pred_block, pred_quat = pred_labels
                 true_block, true_quat = torch.split(true_labels, (8, 4), dim=-1)
@@ -175,20 +162,12 @@ for epoch in range(starting_epoch, MAX_EPOCHS):
                 l2.append(loss2.item())
                 loss = loss1 + loss2
             else:
-                #a, e, t, q = torch.split(torch.cat(pred_labels, dim=-1), (3, 2, 3, 4), dim=-1)
-                #a_true, e_true, t_true, q_true = torch.split(true_labels, (3, 2, 3, 4), dim=-1)
-
-                #l_a = loss_chamfer(true_labels, torch.cat((a, e_true, t_true, q_true), dim=-1))
-                #l_e = loss_chamfer(true_labels, torch.cat((a_true, e, t_true, q_true), dim=-1))
-                #l_t = loss_chamfer(true_labels, torch.cat((a_true, e_true, t, q_true), dim=-1))
-                #l_q = loss_chamfer(true_labels, torch.cat((a_true, e_true, t_true, q), dim=-1))
-                #l_q = loss_chamfer(true_labels, pred_labels)
-
                 loss = loss_rot(true_labels, pred_labels)# l_a + l_e + l_t + l_q
 
-            #if False: #batch_idx == 156:
-            #    save_compare_images(true_labels.cpu().detach().numpy(),
-            #                        torch.cat(pred_labels, dim=-1).cpu().detach().numpy())
+            if batch_idx == 0:
+                trues = true_labels.cpu().detach().numpy()
+                preds = F.normalize(pred_labels, dim=-1).cpu().detach().numpy()
+                save_compare_images(trues, np.concatenate((trues[:, :8], preds), axis=-1))
 
             np_loss = loss.item()
             val_losses.append(np_loss)
