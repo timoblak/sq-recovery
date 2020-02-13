@@ -72,7 +72,7 @@ loss_chamfer = ChamferLoss(16, device)
 loss_quat = QuaternionLoss()
 loss_rot = RotLoss(32, device)
 loss_chamfer_quat = ChamferQuatLoss(32, device)
-scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.1, patience=0, verbose=True, threshold=1e-2)
+scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.1, patience=6, verbose=True, threshold=1e-2)
 
 # ----- Main loop
 best_val_loss = None
@@ -173,7 +173,7 @@ for epoch in range(starting_epoch, MAX_EPOCHS):
             val_losses.append(np_loss)
 
     val_loss_mean = np.mean(val_losses)
-    if True:
+    if best_val_loss is None:
         best_val_loss = np.mean(val_losses)
         save_model(MODEL_LOCATION, epoch, net, optimizer, {"loss": losses, "val_loss": val_losses})
     elif val_loss_mean < best_val_loss:

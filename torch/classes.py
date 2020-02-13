@@ -20,12 +20,12 @@ torch.set_printoptions(sci_mode=False)
 
 
 class SQNet(nn.Module):
-    def __init__(self, outputs, clip_values=False):
+    def __init__(self, outputs, fcn=64, clip_values=False):
         super(SQNet, self).__init__()
         # Parameters
         self.outputs = outputs
         self.clip_values = clip_values
-
+        self.fcn = fcn
         # Convolutions
         self.conv1 = nn.Conv2d(1, 32, kernel_size=7, stride=2, padding=(3, 3))
 
@@ -46,8 +46,8 @@ class SQNet(nn.Module):
         self.conv5_3 = nn.Conv2d(256, 256, kernel_size=3, stride=2, padding=(1, 1))
 
         # Fully connected
-        self.fc1 = nn.Linear(256 * 8 * 8, 64)
-        self.fc2 = nn.Linear(64, self.outputs)
+        self.fc1 = nn.Linear(256 * 8 * 8, self.fcn)
+        self.fc2 = nn.Linear(self.fcn, self.outputs)
 
         # Batch norms
         self.bn1_1 = nn.BatchNorm2d(32)
@@ -65,7 +65,7 @@ class SQNet(nn.Module):
         self.bn4_3 = nn.BatchNorm2d(256)
 
         # Dropout
-        self.drop = nn.Dropout(p=0.3)
+        # self.drop = nn.Dropout(p=0.3)
 
     def forward(self, x):
         # Graph
