@@ -26,7 +26,7 @@ labels = parse_csv("../data/annotations/data_labels.csv")
 # !!!!!! Don't forget to switch dataset mode when going from training to validation !!!!!!
 dataset = H5Dataset(dataset_location, labels, train_split=0.9, dataset_file="dataset.h5.h5")
 training_generator = data.DataLoader(dataset, **{
-    'batch_size': 32,
+    'batch_size': 8,
     'shuffle': False,
     'num_workers': 4
 })
@@ -40,7 +40,7 @@ validation_generator = data.DataLoader(dataset, **{
 # ----- Hyperparameter initialization
 MODEL_LOCATION = "models/model.pt"
 MAX_EPOCHS = 20000
-LEARNING_RATE = 1e-8
+LEARNING_RATE = 1e-4
 LOG_INTERVAL = 1
 RUNNING_MEAN = 100
 DEBUG = False
@@ -66,7 +66,7 @@ loss_chamfer = ChamferLoss(17, device)
 loss_quat = QuaternionLoss()
 loss_rot = RotLoss(32, device)
 loss_chamfer_quat = ChamferQuatLoss(17, device)
-scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.1, patience=4, verbose=True, threshold=1e-2)
+#scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.1, patience=4, verbose=True, threshold=1e-2)
 
 
 g_clip = 0.5
@@ -124,11 +124,12 @@ for epoch in range(starting_epoch, MAX_EPOCHS):
             print("---------------------LABELS (pred - true)------------------------")
             print(pred_labels)
             print(F.normalize(pred_labels))
-            #print(true_labels)
+            print(true_labels[:, 8:])
+            print(true_labels[:, :8])
             print("---------------------GRADS------------------------")
             #print(net.fc2.weight.grad.shape)
             #print(net.fc2.weight.grad)
-            print(torch.sum(net.fc.weight.grad))
+            print(torch.sum(torch.abs(net.fc.weight.grad)))
             #print(net.fc2.weight.grad.shape)
             #print(net.fc2.weight.grad)
             #print(torch.sum(net.fc2.weight.grad))
@@ -152,7 +153,7 @@ for epoch in range(starting_epoch, MAX_EPOCHS):
     print("TRAIN PREDICTIONS: ")
     print("- PRED: ", pred_labels)
     print("- PRED norm: ", F.normalize(pred_labels))
-    print("- TRUE: ", true_labels)
+    print("- TRUE: ", true_labels[:, 8])
     print('Train Epoch: {} Step: {} [(100%)]\tLoss: {:.6f}'.format(epoch, batch_idx, np.mean(losses)))
 
     # Validation
@@ -200,7 +201,7 @@ for epoch in range(starting_epoch, MAX_EPOCHS):
     print("VAL PREDICTIONS: ")
     print("- PRED: ", pred_labels)
     print("- PRED norm: ", F.normalize(pred_labels))
-    print("- TRUE: ", true_labels)
+    print("- TRUE: ", true_labels[:, 8])
     # print("- TRUE: ", torch.split(true_labels, (8, 4), dim=-1))
     print("------------------------------------------------------------------------")
     print('Validation Epoch: {} Step: {} [(100%)]\tLoss: {:,.6f} (Block: {:.6f}, Quat: {:.6f})'.format(epoch, batch_idx, val_loss_mean, np.mean(l1), np.mean(l2)))

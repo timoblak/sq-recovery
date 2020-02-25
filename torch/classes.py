@@ -195,6 +195,7 @@ class H5Dataset(data.Dataset):
         """Generates one sample of data"""
         # Load data and get label
         #t_start = time()
+        #index = index % 1024
         if self.mode == 1:
             index += self.n_train
         #print("Fetching index", index)
@@ -355,8 +356,8 @@ class ChamferQuatLoss:
         p = self.preprocess_sq(p)
         results = []
         for i in range(p.shape[0]):
-            parameters = self.preprocess_sq(p[i])
-            a, e, t, q = torch.split(parameters, (3, 2, 3, 4))
+            #parameters = self.preprocess_sq(p[i])
+            a, e, t, q = torch.split(p[i], (3, 2, 3, 4))
 
             # Create a rotation matrix from quaternion
             rot = mat_from_quaternion(conjugate(q))[0]
@@ -383,7 +384,8 @@ class ChamferQuatLoss:
             inout = E + C
             #inout = torch.sqrt(inout)
             inout = torch.pow(inout, e[0])
-            inout = torch.sigmoid(inout * 2)
+            inout = torch.sqrt(inout)
+            inout = torch.sigmoid(inout * 2 )
             #inout = A1 + B1 + C1
             results.append(inout)
         return torch.stack(results)
@@ -392,9 +394,11 @@ class ChamferQuatLoss:
         #print(true)
         #print(torch.cat((true[:, :8], pred_quat), dim=-1))
         #global  general
-
+        pred_quat = F.normalize(pred_quat, dim=-1)
         a = self._ins_outs(true)
         b = self._ins_outs(torch.cat((true[:, :8], pred_quat), dim=-1))
+        #return F.mse_loss(F.normalize(pred_quat), true[:, 8:])
+
         #print(a.min(), a.max())
         #print(b.min(), b.max())
         #if general:
@@ -402,13 +406,15 @@ class ChamferQuatLoss:
         #    plt.clf()
         #vis_a = b[0].detach().cpu().numpy()
         #vis_b = b[1].detach().cpu().numpy()
-        #vis_c = b[2].detach().cpu().numpy()
-        #vis_d = b[3].detach().cpu().numpy()
+        #vis_at = a[0].detach().cpu().numpy()
+        #vis_bt = a[1].detach().cpu().numpy()
         #print(pred_quat)
-        #plot_render(self.xyz.cpu().numpy(), vis_a, mode="in", figure=1, lims=(-1, 1))
+        #if general:
+        #    plot_render(self.xyz.cpu().numpy(), vis_a, mode="in", figure=1, lims=(-1, 1))
+        #    general = False
         #plot_render(self.xyz.cpu().numpy(), vis_b, mode="in", figure=2, lims=(-1, 1))
-        #plot_render(self.xyz.cpu().numpy(), vis_c, mode="in", figure=3, lims=(-1, 1))
-        #plot_render(self.xyz.cpu().numpy(), vis_d, mode="in", figure=4, lims=(-1, 1))
+        #plot_render(self.xyz.cpu().numpy(), vis_at, mode="in", figure=3, lims=(-1, 1))
+        #plot_render(self.xyz.cpu().numpy(), vis_bt, mode="in", figure=4, lims=(-1, 1))
         #   general = False
         #plot_render(self.xyz.cpu().numpy(), vis_b, mode="in", figure=2, lims=(-1, 1))
         #plt.show()
@@ -416,10 +422,11 @@ class ChamferQuatLoss:
 
         losses = []
         for i, (ai, bi) in enumerate(zip(a, b)):
-            #print(torch.sum(torch.pow(ai - bi, 2)))
+
             losses.append(torch.sum(torch.pow(ai - bi, 2)))
             #losses.append(F.mse_loss(ai, bi, reduction="sum"))
         #return torch.stack(losses, dim=-1)
+        #print(torch.stack(losses, dim=-1))
         return torch.mean(torch.stack(losses, dim=-1))
 
 
@@ -558,9 +565,11 @@ if __name__ == "__main__":
 
             #[[ 0.1084,  0.2769,  0.1893,  0.3213,  0.7323,  0.6345,  0.5084,  0.4530, -0.6100,  0.5794, -0.5103,  0.1780]]
             [
-                [a1, a2, a3, e1, e2, 0, 0, 0, q[0], q[1], q[2], q[3]],
-                [a1, a2, a3, e1, e2, 0, 0, 0, q[0], q[1], q[2], q[3]],
-                [a1, a2, a3, e1, e2, 0, 0, 0, q[0], q[1], q[2], q[3]]
+                #[0.1569, 0.1464, 0.2784, 0.5986, 0.7872, 0.5468, 0.3737, 0.4898, 0.5681, -0.0243, -0.1486,  0.8091],
+                [0.2579, 0.2211, 0.2677, 0.2644, 0.8950, 0.4700, 0.4108, 0.5803, 0, 0, 0, 1],
+                [0.2579, 0.2211, 0.2677, 0.2644, 0.8950, 0.4700, 0.4108, 0.5803, 0, 0, 0, 1],
+                [0.2579, 0.2211, 0.2677, 0.2644, 0.8950, 0.4700, 0.4108, 0.5803, 0, 0, 0, 1]
+                #[0.2579, 0.2211, 0.2677, 0.2644, 0.8950, 0.4700, 0.4108, 0.5803, 0.9670, 0.1445, -0.1083, 0.1800]
                 #[0.1,  0.1,  0.10,  0.154,  0.1,  0.3786,  0.4682,  0.3593, -0.5879, -0.5388, -0.4251, -0.4282],
                 #[0, 0, 0, 1.]
             ], device='cuda:0')
@@ -571,11 +580,13 @@ if __name__ == "__main__":
             #[[0.1084, 0.2769, 0.1893, 0.2517, 0.5858, 0.6345, 0.5084, 0.4530, 0.1782,0.5103, 0.5794, 0.6100]],
             #[[0.0500, 0.0500, 0.1128, 0.3611, 0.0100, 0.4949, 0.2348, 0.6032, 0.2051, 0.7341]],
             #[[ 0.7071068, 0, 0, 0.7071068 ]],
-
             [
+                #[0.8172, -0.0995,  0.0672, -0.5637],
+                #[-0.2312,  0.7598, -0.0264,  0.6071]
                 [np.sin(angle / 2), 0, 0, np.cos(angle / 2)],
                 [0, np.sin(angle / 2), 0, np.cos(angle / 2)],
                 [0, 0, np.sin(angle / 2), np.cos(angle / 2)]
+
                 #[0.2, 0.02, 0.5, 0.1, 0.1, 0.5, 0.5, 0, 0.042749,0.375584,0.222923,0.898563]
             ],
             device='cuda:0', requires_grad=True)
