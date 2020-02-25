@@ -225,3 +225,47 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("INTERRUPT")
         plt.close("all")
+
+
+# Create a rotation matrix from quaternion
+            rot = mat_from_quaternion(conjugate(q))[0]
+            rot2 = mat_from_quaternion(q)[0]
+
+            # Rotate translation vector using quaternion
+            mat = torch.zeros(size=(4, 4), dtype=torch.float64, device=self.device)
+            mat[:3, :3] = rot2
+            mat[:3, 3] = t
+            mat[3] = torch.tensor([0, 0, 0, 1], dtype=torch.float64, device=self.device)
+
+            print(mat)
+            print(mat.inverse())
+            print("-------")
+            print(rot2)
+            print(rot)
+
+            print("-------")
+            print(t)
+            t = torch.matmul(rot, t)
+            print(t)
+
+            #print(q)
+            #print(rot)
+            print("----------------------------------------------")
+
+            #mama = torch.cat([self.xyz, torch.ones(size=(1, self.render_size+1, self.render_size+1, self.render_size+1), dtype=torch.float64, device=self.device)])
+            # Rotate coordinate system using rotation matrix
+            #print(rot.shape, mama.shape)
+            #m = self.xyz
+            #m[0] = m[0] - t[0]
+            #m[1] = m[1] - t[1]
+            #m[2] = m[2] - t[2]
+
+            #m = torch.einsum('ij,jabc->iabc', mat.inverse(), mama )
+            m = torch.einsum('ij,jabc->iabc', rot, self.xyz)
+            #m2 = torch.matmul(mat, self.xyz.permute((1, 2, 3, 0)))
+
+            # #### Calculate inside-outside equation ####
+            # First the inner parts of equation (translate + divide with axis sizes)
+            x_translated = (m[0] - t[0]) / a[0]
+            y_translated = (m[1] - t[1]) / a[1]
+            z_translated = (m[2] - t[2]) / a[2]

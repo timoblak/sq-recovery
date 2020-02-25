@@ -10,24 +10,26 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torchsummary import summary
 from torch.utils import data
-from helpers import plot_render, plot_grad_flow, plot_points
+from helpers import plot_render, plot_grad_flow, plot_points, norm_img, randquat
 from matplotlib import pyplot as plt
-from quaternion import rotate, mat_from_quaternion
+from quaternion import rotate, mat_from_quaternion, conjugate
 
 
-torch.set_printoptions(sci_mode=False)
+#torch.set_printoptions(sci_mode=False)
 
 
 
 class SQNet(nn.Module):
-    def __init__(self, outputs, fcn=64, clip_values=False):
+    def __init__(self, outputs, fcn=64, dropout=0, clip_values=False):
         super(SQNet, self).__init__()
         # Parameters
         self.outputs = outputs
         self.clip_values = clip_values
         self.fcn = fcn
+        self.dropout = dropout
         # Convolutions
         self.conv1 = nn.Conv2d(1, 32, kernel_size=7, stride=2, padding=(3, 3))
+        #nn.init.xavier_uniform(self.conv1.weight)
 
         self.conv2_1 = nn.Conv2d(32, 32, kernel_size=3, stride=1, padding=(1, 1))
         self.conv2_2 = nn.Conv2d(32, 32, kernel_size=3, stride=1, padding=(1, 1))
@@ -46,7 +48,7 @@ class SQNet(nn.Module):
         self.conv5_3 = nn.Conv2d(256, 256, kernel_size=3, stride=2, padding=(1, 1))
 
         # Fully connected
-        self.fc1 = nn.Linear(256 * 8 * 8, self.fcn)
+        self.fc1 = nn.Linear(128 * 16 * 16, self.fcn)
         self.fc2 = nn.Linear(self.fcn, self.outputs)
 
         # Batch norms
@@ -65,15 +67,17 @@ class SQNet(nn.Module):
         self.bn4_3 = nn.BatchNorm2d(256)
 
         # Dropout
-        # self.drop = nn.Dropout(p=0.3)
+        self.drop = nn.Dropout(p=self.dropout)
 
     def forward(self, x):
         # Graph
+        """
         x = F.relu(self.bn1_1(self.conv1(x)))
 
         x = F.relu(self.bn1_2(self.conv2_1(x)))
         x = F.relu(self.bn1_3(self.conv2_2(x)))
         x = F.relu(self.bn1_4(self.conv2_3(x)))
+
 
         x = F.relu(self.bn2_1(self.conv3_1(x)))
         x = F.relu(self.bn2_2(self.conv3_2(x)))
@@ -86,40 +90,64 @@ class SQNet(nn.Module):
         x = F.relu(self.bn4_1(self.conv5_1(x)))
         x = F.relu(self.bn4_2(self.conv5_2(x)))
         x = F.relu(self.bn4_3(self.conv5_3(x)))
+        """
+
+        x = F.relu(self.conv1(x))
+
+        x = F.relu(self.conv2_1(x))
+        x = F.relu(self.conv2_2(x))
+        x = F.relu(self.conv2_3(x))
+
+        x = F.relu(self.conv3_1(x))
+        x = F.relu(self.conv3_2(x))
+        x = F.relu(self.conv3_3(x))
+
+
+
+        x = F.relu(self.conv4_1(x))
+        x = F.relu(self.conv4_2(x))
+        x = F.relu(self.conv4_3(x))
+
+        #x = F.relu(self.conv5_1(x))
+        #x = F.relu(self.conv5_2(x))
+        #x = F.relu(self.conv5_3(x))
+
+        """
+        v = 21
+        a = x[0][v].detach().cpu().numpy()
+        cv2.imshow("as1d", (a - a.min()) / (a - a.min()).max())
+        a = x[1][v].detach().cpu().numpy()
+        cv2.imshow("as2d", (a - a.min()) / (a - a.min()).max())
+        a = x[2][v].detach().cpu().numpy()
+        cv2.imshow("as3d", (a - a.min()) / (a - a.min()).max())
+        a = x[3][v].detach().cpu().numpy()
+        cv2.imshow("as4d", (a - a.min()) / (a - a.min()).max())
+        print(x[0][v])
+        print(x[1][v])
+        print(x[2][v])
+        print(x[3][v])
+        print(torch.sum(x[0][v]))
+        print(torch.sum(x[1][v]))
+        print(torch.sum(x[2][v]))
+        print(torch.sum(x[3][v]))
+        
+        cv2.waitKey(0)
+        """
+        #for i in range(5):
+        #    cv2.imshow("Image" + str(i), norm_img(cv2.resize(x[0][i].detach().cpu().numpy(), None, fx=2, fy=2)))
+        #    cv2.waitKey(5)
 
         # Flatten + output
-        x = x.view(-1, self.num_flat_features(x))
-        #x = self.drop(F.relu(self.fc1(x)))
+        x = x.reshape(x.size(0), -1)
+
         x = F.relu(self.fc1(x))
         x = self.fc2(x)
 
-        if self.clip_values:
-            x = self.clip_to_range(x)
-
-        # Normalize quaternions
-        #others, q = torch.split(x, (8, 4), dim=-1)
-
         return x
-
-    @staticmethod
-    def clip_to_range(x):
-        a, e, t, q = torch.split(x, (3, 2, 3, 4), dim=-1)
-        a = torch.clamp(a, min=0.01, max=1)
-        e = torch.clamp(e, min=0.1, max=1)
-        t = torch.clamp(t, min=0.01, max=1)
-        return torch.cat((a, e, t, q), dim=-1)
-
-    @staticmethod
-    def num_flat_features(x):
-        size = x.size()[1:]  # all dimensions except the batch dimension
-        num_features = 1
-        for s in size:
-            num_features *= s
-        return num_features
 
 
 class H5Dataset(data.Dataset):
-    def __init__(self, dataset_location, labels, dataset_file='dataset.h5'):
+    def __init__(self, dataset_location, labels, train_split, dataset_file='dataset.h5'):
         self.labels = labels
         self.dataset_location = dataset_location
         self.ext = ".bmp"
@@ -128,11 +156,20 @@ class H5Dataset(data.Dataset):
 
         self.dataset = None
         self.handle = None
+        self.mode = 0  # 0 - train, 1 - validate
+
+        self.n_train = int(train_split * len(labels))
+        self.n_val = len(labels) - self.n_train
+
         self.build_dataset()
-        #self.load_dataset()
 
     def __len__(self):
-        return len(self.labels)
+        if self.mode == 0:
+            return self.n_train
+        return self.n_val
+
+    def set_mode(self, mode):
+        self.mode = mode
 
     def load_dataset(self):
         print("Opening dataset")
@@ -158,7 +195,9 @@ class H5Dataset(data.Dataset):
         """Generates one sample of data"""
         # Load data and get label
         #t_start = time()
-        #index = 0
+        if self.mode == 1:
+            index += self.n_train
+        #print("Fetching index", index)
         with h5py.File(self.h5_filepath, 'r') as db:
             X = db["sq"][index]
 
@@ -172,7 +211,7 @@ class H5Dataset(data.Dataset):
         img = np.expand_dims(img, -1)
         img = np.transpose(img, (2, 0, 1))
         # Do preprocessing
-        img /= 255
+        #img /= 255
         return img
 
     def load_label(self, ID):
@@ -200,6 +239,7 @@ class ChamferLoss:
         self.render_type = np.float64
         self.eps = 1e-8
         self.reduce = reduce
+        self.device = device
 
         step = 1 / render_size
         range = torch.tensor(np.arange(0, 1+step, step).astype(self.render_type))
@@ -224,54 +264,61 @@ class ChamferLoss:
             parameters = self.preprocess_sq(p[i])
             a, e, t, q = torch.split(parameters, (3, 2, 3, 4))
 
-            # Create a rotation matrix from quaternion
-            rot = mat_from_quaternion(q)
-            # Rotate translation vector using quaternion
+            # To transform info general space either:
+            # - contruct 4x4 homogenous transformation matrix from q and t.
+            #   then inverse and apply to xyz space
+            # - take conjugate of q (or transpose of rotation matrix) and then
+            #   first rotate translation vector, then rotate and translate the space <- impemented
 
-            t = rotate(t, q)
-
-            # Rotate coordinate system using rotation matrix
-            m = torch.einsum('xij,jabc->iabc', rot, self.xyz)
+            # Create a rotation matrix from conjugated quaternion
+            rot = mat_from_quaternion(conjugate(q))[0]
+            t = torch.matmul(rot, t)
+            coordinate_system = torch.einsum('ij,jabc->iabc', rot, self.xyz)
 
             # #### Calculate inside-outside equation ####
             # First the inner parts of equation (translate + divide with axis sizes)
-            x_translated = (m[0] - t[0]) / a[0]
-            y_translated = (m[1] - t[1]) / a[1]
-            z_translated = (m[2] - t[2]) / a[2]
+            x_translated = (coordinate_system[0] - t[0]) / a[0]
+            y_translated = (coordinate_system[1] - t[1]) / a[1]
+            z_translated = (coordinate_system[2] - t[2]) / a[2]
 
+            # Calculate powers of 2 to get rid of negative values)
             A1 = torch.pow(x_translated, 2)
             B1 = torch.pow(y_translated, 2)
             C1 = torch.pow(z_translated, 2)
 
+            # Then calculate root
             A = torch.pow(A1, (1 / e[1]))
             B = torch.pow(B1, (1 / e[1]))
             C = torch.pow(C1, (1 / e[0]))
 
-            D = A + B
-            E = torch.pow(D, (e[1] / e[0]))
+            E = torch.pow(A + B, (e[1] / e[0]))
             inout = E + C
-            #inout = torch.pow(inout, e[0])
-            #inout = A1 + B1 + C1
+            inout = torch.pow(inout, e[0])
 
             results.append(inout)
         return torch.stack(results)
 
     def __call__(self, true, pred):
         #print("-------------------------------------------")
-        pred = F.normalize(pred, dim=-1)
+        #pred = F.normalize(pred, dim=-1)
         a = self._ins_outs(true)
+
         b = self._ins_outs(pred)
+        print(a.min(), a.max())
+        print(b.min(), b.max())
+
         #print(pred)
-        #x = self.xyz.cpu().numpy()
-        #for i in range(true.shape[0]):
-            #vis_a = a[i].detach().cpu().numpy()
-            #vis_b = b[i].detach().cpu().numpy()
+        x = self.xyz.cpu().numpy()
+        #for i in range(1):#true.shape[0]):
+        vis_a = a[0].detach().cpu().numpy()
+        vis_b = b[0].detach().cpu().numpy()
 
-            #plot_render(x, vis_a, mode="in", figure=1)
-            #plot_render(x, vis_b, mode="in", figure=2)
+        plot_render(x, vis_a, mode="in", figure=1)
+        plot_render(x, vis_b, mode="in", figure=2)
+        plt.show()
             #plot_render(x, np.abs(vis_a-vis_b), mode="in", figure=3)
+        exit()
 
-        #plt.draw()
         #vis_a[vis_a <= 1] = 1; vis_a[vis_a > 1] = 0
         #vis_b[vis_b <= 1] = 1; vis_b[vis_b > 1] = 0
         #iou = np.bitwise_and(vis_a.astype(bool), vis_b.astype(bool))
@@ -282,80 +329,97 @@ class ChamferLoss:
         return torch.sum(torch.pow(a-b, 2)) / true.shape[0]
 
 
+general = True
+
 class ChamferQuatLoss:
     def __init__(self, render_size, device, reduce=True):
         self.render_size = render_size
         self.render_type = np.float64
         self.eps = 1e-8
         self.reduce = reduce
+        self.device = device
 
         step = 2 / render_size
         range = torch.tensor(np.arange(-1, 1 + step, step).astype(self.render_type))
         xyz_list = torch.meshgrid([range, range, range])
         self.xyz = torch.stack(xyz_list).to(device)
-        self.device = device
+        self.xyz.requires_grad = False
 
-    @staticmethod
-    def preprocess_sq(p):
+    def preprocess_sq(self, p):
         a, e, t, q = torch.split(p, (3, 2, 3, 4), dim=-1)
-        a = a * 2
+        q = F.normalize(q, dim=-1)
         return torch.cat([a, e, t, q], dim=-1)
 
     def _ins_outs(self, p):
-        p = self.preprocess_sq(p)
         p = p.double()
+        p = self.preprocess_sq(p)
         results = []
         for i in range(p.shape[0]):
-            a, e, t, q = torch.split(p[i], (3, 2, 3, 4))
+            parameters = self.preprocess_sq(p[i])
+            a, e, t, q = torch.split(parameters, (3, 2, 3, 4))
 
-            q = F.normalize(q, dim=-1)
             # Create a rotation matrix from quaternion
-            rot = mat_from_quaternion(q)
-
-            # Rotate coordinate system using rotation matrix
-            m = torch.einsum('xij,jabc->iabc', rot, self.xyz)
-
-            #m = rotate(self.xyz.permute(1, 2, 3, 0), q).permute(3, 0, 1, 2)
+            rot = mat_from_quaternion(conjugate(q))[0]
+            #t = torch.matmul(rot, t)
+            coordinate_system = torch.einsum('ij,jabc->iabc', rot, self.xyz)
 
             # #### Calculate inside-outside equation ####
             # First the inner parts of equation (translate + divide with axis sizes)
-            x_translated = m[0] / a[0]
-            y_translated = m[1] / a[1]
-            z_translated = m[2] / a[2]
+            x_translated = coordinate_system[0] / (a[0] * 2)
+            y_translated = coordinate_system[1] / (a[1] * 2)
+            z_translated = coordinate_system[2] / (a[2] * 2)
 
+            # Calculate powers of 2 to get rid of negative values)
             A1 = torch.pow(x_translated, 2)
             B1 = torch.pow(y_translated, 2)
             C1 = torch.pow(z_translated, 2)
 
+            # Then calculate root
             A = torch.pow(A1, (1 / e[1]))
             B = torch.pow(B1, (1 / e[1]))
             C = torch.pow(C1, (1 / e[0]))
 
             E = torch.pow(A + B, (e[1] / e[0]))
-
             inout = E + C
-            inout = torch.pow(inout, e[1])
+            #inout = torch.sqrt(inout)
+            inout = torch.pow(inout, e[0])
+            inout = torch.sigmoid(inout * 2)
+            #inout = A1 + B1 + C1
             results.append(inout)
         return torch.stack(results)
 
     def __call__(self, true, pred_quat):
-        a = self._ins_outs(true)
-        true_block, true_quat = torch.split(true, (8, 4), dim=-1)
-        b = self._ins_outs(torch.cat((true_block, pred_quat), dim=-1))
+        #print(true)
+        #print(torch.cat((true[:, :8], pred_quat), dim=-1))
+        #global  general
 
-        #vis_a = a[0].detach().cpu().numpy()
-        #vis_b = b[0].detach().cpu().numpy()
+        a = self._ins_outs(true)
+        b = self._ins_outs(torch.cat((true[:, :8], pred_quat), dim=-1))
+        #print(a.min(), a.max())
+        #print(b.min(), b.max())
+        #if general:
+
+        #    plt.clf()
+        #vis_a = b[0].detach().cpu().numpy()
+        #vis_b = b[1].detach().cpu().numpy()
+        #vis_c = b[2].detach().cpu().numpy()
+        #vis_d = b[3].detach().cpu().numpy()
+        #print(pred_quat)
         #plot_render(self.xyz.cpu().numpy(), vis_a, mode="in", figure=1, lims=(-1, 1))
         #plot_render(self.xyz.cpu().numpy(), vis_b, mode="in", figure=2, lims=(-1, 1))
+        #plot_render(self.xyz.cpu().numpy(), vis_c, mode="in", figure=3, lims=(-1, 1))
+        #plot_render(self.xyz.cpu().numpy(), vis_d, mode="in", figure=4, lims=(-1, 1))
+        #   general = False
+        #plot_render(self.xyz.cpu().numpy(), vis_b, mode="in", figure=2, lims=(-1, 1))
         #plt.show()
-        return F.mse_loss(a, b, reduction="mean")
+        #return F.mse_loss(a[0], b[0], reduction="none")
+
         losses = []
         for i, (ai, bi) in enumerate(zip(a, b)):
-            pw = torch.pow(ai - bi, 2)
-            diff = torch.sum(pw)
-
-            losses.append(diff)
-
+            #print(torch.sum(torch.pow(ai - bi, 2)))
+            losses.append(torch.sum(torch.pow(ai - bi, 2)))
+            #losses.append(F.mse_loss(ai, bi, reduction="sum"))
+        #return torch.stack(losses, dim=-1)
         return torch.mean(torch.stack(losses, dim=-1))
 
 
@@ -407,7 +471,7 @@ class RotLoss:
         #print("-------------------------------------------")
         true = true.double()
         pred = pred_quat.double()
-
+        global general
         batch_errs = []
         for i in range(true.shape[0]):
             # Gererate the inout space
@@ -417,7 +481,7 @@ class RotLoss:
             #t = time()
             for border in np.arange(0, 1, 0.01):
                 indxs = torch.where((inout < (1 + border)) & (inout > (1 - border)))
-                if indxs[0].shape[0] > 50:
+                if indxs[0].shape[0] > 30:
                     break
             #print("Time searching:", time()-t)
             #border = 0.1 + self.eps * (1 - torch.min(true[i][3], true[i][4]))
@@ -446,17 +510,21 @@ class RotLoss:
             true_quat = true[i, 8:]
             # Create a rotation matrix from quaternion
             q = F.normalize(pred[i], dim=-1)
-            rot_true = mat_from_quaternion(true_quat)[0]
-            rot_pred = mat_from_quaternion(q)[0]
+            rot_true = mat_from_quaternion(conjugate(true_quat))[0]
+            rot_pred = mat_from_quaternion(conjugate(q))[0]
 
             # Rotate coordinate system using rotation matrix
             m_true = torch.einsum("xj, ...j", rot_true, points)
             m_pred = torch.einsum("xj, ...j", rot_pred, points)
 
-            #x, y, z = m_pred.permute(1, 0).detach().cpu().numpy()
+
             #xt, yt, zt = m_true.permute(1, 0).cpu().numpy()
             #plt.clf()
-            #plot_points(x, y, z, figure=3, subplot=121)
+            #if general:
+            #    x, y, z = m_pred.permute(1, 0).detach().cpu().numpy()
+            #    plt.clf()
+            #    plot_points(x, y, z, figure=3, subplot=111)
+            #    general = False
             #plot_points(xt, yt, zt, figure=3, subplot=122)
             #plt.show()
 
@@ -465,29 +533,34 @@ class RotLoss:
                 diffs = torch.pow(m_true - pp, 2)
                 distances = torch.sum(diffs, dim=-1)
                 err += torch.min(distances)
-            batch_errs.append(err)
-
-        #exit()
+            batch_errs.append(err/m_pred.shape[0])
         return torch.mean(torch.stack(batch_errs))
 
 
 if __name__ == "__main__":
     device = torch.device("cuda:0")
     req_grad = False
-    loss = ChamferQuatLoss(render_size=15, device=device)
+    #loss = ChamferLoss(render_size=32, device=device)
+    loss = ChamferQuatLoss(render_size=17, device=device)
     #loss = RotLoss(render_size=32, device=device)
     loss2 = torch.nn.MSELoss(reduction="mean")
     losses = []
+    angles = []
     #loss_chamfer(, true_labels)
+    q = [0, 0, 0, 1]#randquat()
     for factor in np.arange(0, 1.005, 0.005):
         angle = factor*np.pi*2
+        e1, e2 = 1, 1
+        a1, a2, a3 = 0.1, 0.2, 0.3
+
         true = torch.tensor(
+
 
             #[[ 0.1084,  0.2769,  0.1893,  0.3213,  0.7323,  0.6345,  0.5084,  0.4530, -0.6100,  0.5794, -0.5103,  0.1780]]
             [
-                #[0.1, 0.1, 0.1, 0.1, 0.1,  0.6345,  0.5084,  0.4530, 0, 0, 0, 1.],
-                [0.2390,  0.2537,  0.2847,  0.5455,  0.8367,  0.5167,  0.3494,  0.4659,
-          0.0301,  0.0014, -0.9108, -0.4117],
+                [a1, a2, a3, e1, e2, 0, 0, 0, q[0], q[1], q[2], q[3]],
+                [a1, a2, a3, e1, e2, 0, 0, 0, q[0], q[1], q[2], q[3]],
+                [a1, a2, a3, e1, e2, 0, 0, 0, q[0], q[1], q[2], q[3]]
                 #[0.1,  0.1,  0.10,  0.154,  0.1,  0.3786,  0.4682,  0.3593, -0.5879, -0.5388, -0.4251, -0.4282],
                 #[0, 0, 0, 1.]
             ], device='cuda:0')
@@ -500,8 +573,10 @@ if __name__ == "__main__":
             #[[ 0.7071068, 0, 0, 0.7071068 ]],
 
             [
-                #[np.sin(angle / 2), 0, 0, np.cos(angle / 2)],
-                [0.0467, 0.1050, 0.1301, 0.0061]
+                [np.sin(angle / 2), 0, 0, np.cos(angle / 2)],
+                [0, np.sin(angle / 2), 0, np.cos(angle / 2)],
+                [0, 0, np.sin(angle / 2), np.cos(angle / 2)]
+                #[0.2, 0.02, 0.5, 0.1, 0.1, 0.5, 0.5, 0, 0.042749,0.375584,0.222923,0.898563]
             ],
             device='cuda:0', requires_grad=True)
 
@@ -515,16 +590,42 @@ if __name__ == "__main__":
 
         #l = l_a + l_e + l_t + l_q
         l = loss(true, pred)
-        losses.append(l.item())
-        l.backward()
+
+        losses.append(l.detach().cpu().numpy())
+        angles.append(angle)
+        #l.backward()
 
         print("True: " + str(true))
         print("Pred: " + str(pred))
         print("----")
         print(l)
-        print(pred.grad)
+        #print(pred.grad)
         print("-----------------------------------------------")
-        break
 
-    plt.plot(losses)
+    np_losses = np.array(losses)
+    x_axis_loss = np_losses[:, 0]
+    y_axis_loss = np_losses[:, 1]
+    z_axis_loss = np_losses[:, 2]
+
+
+    xlimm = [0, 20]
+    plt.figure(4)
+    plt.subplot(131)
+    plt.plot(np.rad2deg(angles), x_axis_loss)
+    plt.xlabel("Angle in deg")
+    plt.ylabel("Error")
+    plt.title("Rotation around X axis")
+    plt.ylim(xlimm)
+    plt.subplot(132)
+    plt.plot(np.rad2deg(angles), y_axis_loss)
+    plt.xlabel("Angle in deg")
+    #plt.ylabel("Error")
+    plt.title("Rotation around Y axis")
+    plt.ylim(xlimm)
+    plt.subplot(133)
+    plt.plot(np.rad2deg(angles), z_axis_loss)
+    plt.xlabel("Angle in deg")
+    #plt.ylabel("Error")
+    plt.title("Rotation around Z axis")
+    plt.ylim(xlimm)
     plt.show()

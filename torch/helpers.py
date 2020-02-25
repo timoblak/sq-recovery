@@ -6,6 +6,10 @@ from matplotlib import pyplot as plt
 from matplotlib.lines import Line2D
 from time import sleep
 
+def norm_img(img):
+    img -= img.min()
+    return img / img.max()
+
 
 def quat2mat(q):
     # Transforms a quaternion into a rotation matrix
@@ -50,7 +54,6 @@ def load_model(path, model, optimizer):
     return epoch, model, optimizer, loss
 
 def save_compare_images(params_true, params_pred):
-    print(params_true)
     for i, (true, pred) in enumerate(zip(params_true, params_pred)):
         M = quat2mat(true[-4:])
         params = np.concatenate((true[:3] * 255., true[3:5], true[5:8] * 255, M.ravel()))
@@ -76,7 +79,7 @@ def plot_render(meshgrid, np_array, mode="all", figure=1, lims=(0, 1), eps=0.1):
         disp = (np_array >= 0)
         opacity = 0.1
     elif mode == "in":
-        disp = (np_array < 1)
+        disp = (np_array < 0.95)
         opacity = 0.1
     elif mode == "bit":
         disp = (np_array == 1)
@@ -96,6 +99,7 @@ def plot_render(meshgrid, np_array, mode="all", figure=1, lims=(0, 1), eps=0.1):
             a = opacity
         clr[i] = np.array([r, b, g, a])
 
+
     ax.scatter(
         meshgrid[0],
         meshgrid[1],
@@ -103,7 +107,7 @@ def plot_render(meshgrid, np_array, mode="all", figure=1, lims=(0, 1), eps=0.1):
         color=clr, marker='o'
         #np_array[disp].ravel(), marker='o', alpha=0.3
     )
-
+    lims2 = (1, 0)
     ax.set(xlim=lims, ylim=lims, zlim=lims)
     ax.set_xlabel('X Axis')
     ax.set_ylabel('Y Axis')
@@ -225,3 +229,11 @@ def getBack(var_grad_fn):
                 print()
             except AttributeError as e:
                 getBack(n[0])
+
+def randquat():
+    u = np.random.uniform(0, 1, (3,))
+    q = np.array([np.sqrt(1 - u[0]) * np.sin(2 * np.pi * u[1]),
+                  np.sqrt(1 - u[0]) * np.cos(2 * np.pi * u[1]),
+                  np.sqrt(u[0]) * np.sin(2 * np.pi * u[2]),
+                  np.sqrt(u[0]) * np.cos(2 * np.pi * u[2])])
+    return q

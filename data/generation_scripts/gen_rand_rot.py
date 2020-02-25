@@ -8,12 +8,11 @@ if __name__ == "__main__":
     e1, e2     = np.random.uniform(0.1, 1.0, (2,))
     pos = np.array([128.0, 128.0, 128.0])
 
-    dst = "./data_rot_val2"
-    #dst = os.path.expanduser("../data_rot_val/")
-    n_data = 5000
+    n_data = 150000
 
-    f1 = open("gen_rand_rot_val2.sh", "w")
-    f2 = open("../annotations/data_rot_val2.csv", "w")
+    dst = "./data"
+    f1 = open("script_random_rotations.sh", "w")
+    f2 = open("../annotations/data_labels.csv", "w")
 
     for i in tqdm(range(n_data)):
 

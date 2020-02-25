@@ -17,7 +17,7 @@ def rotate(point, quaternion):
 
 def conjugate(quaternion):
     xyz, w = torch.split(quaternion, (3, 1), dim=-1)
-    return torch.cat((-xyz, w), dim=-1)
+    return torch.cat((xyz*-1, w), dim=-1)
 
 
 def multiply(quaternion1, quaternion2):
@@ -60,6 +60,31 @@ def test_quat_loss(ytrue, ypred, reduce=True):
         return torch.mean(theta)
     return theta
 
+def to_axis_angle(q):
+    qx, qy, qz, qw = torch.split(q, (1, 1, 1, 1), dim=-1)
+
+    w_acos = torch.acos(qw) + 1e-8
+    w_sin_acos = torch.sin(w_acos)
+    angle = 2 * w_acos
+
+    x = qx / w_sin_acos
+    y = qy / w_sin_acos
+    z = qz / w_sin_acos
+
+    return torch.cat((x, y, z, angle), dim=-1)
+
+
+def to_euler_angle(q):
+    qi, qj, qk, qr = torch.split(q, (1, 1, 1, 1), dim=-1)
+
+    phi = torch.atan2((qi*qk + qj*qr), -(qj*qk - qi*qr))
+    print(- qi**2 - qj**2 - qk**2 - qr**2)
+    theta = torch.acos(- qi**2 - qj**2 - qk**2 - qr**2)
+    gamma = torch.atan2((qi*qk - qj*qr), (qj*qk + qi*qr))
+
+    result = torch.cat((phi, theta, gamma), dim=-1)
+    return result
+
 
 if __name__ == "__main__":
     pt = np.array([1, 1, 1])
@@ -79,5 +104,5 @@ if __name__ == "__main__":
         [0, 0, 0.7071068, 0.7071068],
         [ 0.7743,  0.2355, -0.4961, -0.3146]])
     q = torch.tensor(q, dtype=torch.float64, device="cuda:0")
-    q2 = torch.tensor(q2, dtype=torch.float64, device="cuda:0")
-    print(test_quat_loss(q2, q, reduce=False))
+    #q2 = torch.tensor(q2, dtype=torch.float64, device="cuda:0")
+    print(to_euler_angle(q))
