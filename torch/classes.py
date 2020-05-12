@@ -10,140 +10,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torchsummary import summary
 from torch.utils import data
-from helpers import plot_render, plot_grad_flow, plot_points, norm_img, randquat
+from helpers import plot_render, plot_grad_flow, plot_points, norm_img, randquat, slerp
 from matplotlib import pyplot as plt
-from quaternion import rotate, mat_from_quaternion, conjugate
+from quaternion import rotate, mat_from_quaternion, conjugate, multiply, to_magnitude, to_euler_angle, to_axis_angle
 
 
 #torch.set_printoptions(sci_mode=False)
-
-
-
-class SQNet(nn.Module):
-    def __init__(self, outputs, fcn=64, dropout=0, clip_values=False):
-        super(SQNet, self).__init__()
-        # Parameters
-        self.outputs = outputs
-        self.clip_values = clip_values
-        self.fcn = fcn
-        self.dropout = dropout
-        # Convolutions
-        self.conv1 = nn.Conv2d(1, 32, kernel_size=7, stride=2, padding=(3, 3))
-        #nn.init.xavier_uniform(self.conv1.weight)
-
-        self.conv2_1 = nn.Conv2d(32, 32, kernel_size=3, stride=1, padding=(1, 1))
-        self.conv2_2 = nn.Conv2d(32, 32, kernel_size=3, stride=1, padding=(1, 1))
-        self.conv2_3 = nn.Conv2d(32, 32, kernel_size=3, stride=2, padding=(1, 1))
-
-        self.conv3_1 = nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=(1, 1))
-        self.conv3_2 = nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=(1, 1))
-        self.conv3_3 = nn.Conv2d(64, 64, kernel_size=3, stride=2, padding=(1, 1))
-
-        self.conv4_1 = nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=(1, 1))
-        self.conv4_2 = nn.Conv2d(128, 128, kernel_size=3, stride=1, padding=(1, 1))
-        self.conv4_3 = nn.Conv2d(128, 128, kernel_size=3, stride=2, padding=(1, 1))
-
-        self.conv5_1 = nn.Conv2d(128, 256, kernel_size=3, stride=1, padding=(1, 1))
-        self.conv5_2 = nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=(1, 1))
-        self.conv5_3 = nn.Conv2d(256, 256, kernel_size=3, stride=2, padding=(1, 1))
-
-        # Fully connected
-        self.fc1 = nn.Linear(128 * 16 * 16, self.fcn)
-        self.fc2 = nn.Linear(self.fcn, self.outputs)
-
-        # Batch norms
-        self.bn1_1 = nn.BatchNorm2d(32)
-        self.bn1_2 = nn.BatchNorm2d(32)
-        self.bn1_3 = nn.BatchNorm2d(32)
-        self.bn1_4 = nn.BatchNorm2d(32)
-        self.bn2_1 = nn.BatchNorm2d(64)
-        self.bn2_2 = nn.BatchNorm2d(64)
-        self.bn2_3 = nn.BatchNorm2d(64)
-        self.bn3_1 = nn.BatchNorm2d(128)
-        self.bn3_2 = nn.BatchNorm2d(128)
-        self.bn3_3 = nn.BatchNorm2d(128)
-        self.bn4_1 = nn.BatchNorm2d(256)
-        self.bn4_2 = nn.BatchNorm2d(256)
-        self.bn4_3 = nn.BatchNorm2d(256)
-
-        # Dropout
-        self.drop = nn.Dropout(p=self.dropout)
-
-    def forward(self, x):
-        # Graph
-        """
-        x = F.relu(self.bn1_1(self.conv1(x)))
-
-        x = F.relu(self.bn1_2(self.conv2_1(x)))
-        x = F.relu(self.bn1_3(self.conv2_2(x)))
-        x = F.relu(self.bn1_4(self.conv2_3(x)))
-
-
-        x = F.relu(self.bn2_1(self.conv3_1(x)))
-        x = F.relu(self.bn2_2(self.conv3_2(x)))
-        x = F.relu(self.bn2_3(self.conv3_3(x)))
-
-        x = F.relu(self.bn3_1(self.conv4_1(x)))
-        x = F.relu(self.bn3_2(self.conv4_2(x)))
-        x = F.relu(self.bn3_3(self.conv4_3(x)))
-
-        x = F.relu(self.bn4_1(self.conv5_1(x)))
-        x = F.relu(self.bn4_2(self.conv5_2(x)))
-        x = F.relu(self.bn4_3(self.conv5_3(x)))
-        """
-
-        x = F.relu(self.conv1(x))
-
-        x = F.relu(self.conv2_1(x))
-        x = F.relu(self.conv2_2(x))
-        x = F.relu(self.conv2_3(x))
-
-        x = F.relu(self.conv3_1(x))
-        x = F.relu(self.conv3_2(x))
-        x = F.relu(self.conv3_3(x))
-
-
-
-        x = F.relu(self.conv4_1(x))
-        x = F.relu(self.conv4_2(x))
-        x = F.relu(self.conv4_3(x))
-
-        #x = F.relu(self.conv5_1(x))
-        #x = F.relu(self.conv5_2(x))
-        #x = F.relu(self.conv5_3(x))
-
-        """
-        v = 21
-        a = x[0][v].detach().cpu().numpy()
-        cv2.imshow("as1d", (a - a.min()) / (a - a.min()).max())
-        a = x[1][v].detach().cpu().numpy()
-        cv2.imshow("as2d", (a - a.min()) / (a - a.min()).max())
-        a = x[2][v].detach().cpu().numpy()
-        cv2.imshow("as3d", (a - a.min()) / (a - a.min()).max())
-        a = x[3][v].detach().cpu().numpy()
-        cv2.imshow("as4d", (a - a.min()) / (a - a.min()).max())
-        print(x[0][v])
-        print(x[1][v])
-        print(x[2][v])
-        print(x[3][v])
-        print(torch.sum(x[0][v]))
-        print(torch.sum(x[1][v]))
-        print(torch.sum(x[2][v]))
-        print(torch.sum(x[3][v]))
-        
-        cv2.waitKey(0)
-        """
-        #for i in range(5):
-        #    cv2.imshow("Image" + str(i), norm_img(cv2.resize(x[0][i].detach().cpu().numpy(), None, fx=2, fy=2)))
-        #    cv2.waitKey(5)
-
-        # Flatten + output
-        x = x.reshape(x.size(0), -1)
-
-        x = F.relu(self.fc1(x))
-        x = self.fc2(x)
-
-        return x
 
 
 class H5Dataset(data.Dataset):
@@ -195,7 +67,7 @@ class H5Dataset(data.Dataset):
         """Generates one sample of data"""
         # Load data and get label
         #t_start = time()
-        #index = index % 1024
+
         if self.mode == 1:
             index += self.n_train
         #print("Fetching index", index)
@@ -212,7 +84,7 @@ class H5Dataset(data.Dataset):
         img = np.expand_dims(img, -1)
         img = np.transpose(img, (2, 0, 1))
         # Do preprocessing
-        #img /= 255
+        img /= 255
         return img
 
     def load_label(self, ID):
@@ -344,16 +216,11 @@ class ChamferQuatLoss:
         range = torch.tensor(np.arange(-1, 1 + step, step).astype(self.render_type))
         xyz_list = torch.meshgrid([range, range, range])
         self.xyz = torch.stack(xyz_list).to(device)
+        self.xyz[self.xyz == 0] += 1e-4
         self.xyz.requires_grad = False
-
-    def preprocess_sq(self, p):
-        a, e, t, q = torch.split(p, (3, 2, 3, 4), dim=-1)
-        q = F.normalize(q, dim=-1)
-        return torch.cat([a, e, t, q], dim=-1)
 
     def _ins_outs(self, p):
         p = p.double()
-        p = self.preprocess_sq(p)
         results = []
         for i in range(p.shape[0]):
             #parameters = self.preprocess_sq(p[i])
@@ -382,51 +249,27 @@ class ChamferQuatLoss:
 
             E = torch.pow(A + B, (e[1] / e[0]))
             inout = E + C
-            #inout = torch.sqrt(inout)
+
             inout = torch.pow(inout, e[0])
-            inout = torch.sqrt(inout)
-            inout = torch.sigmoid(inout * 2 )
+            #inout = torch.sqrt(inout)
+            #inout = torch.sigmoid(inout*2)
+            inout = torch.sigmoid(5 * (1 - inout))
             #inout = A1 + B1 + C1
             results.append(inout)
         return torch.stack(results)
 
     def __call__(self, true, pred_quat):
-        #print(true)
-        #print(torch.cat((true[:, :8], pred_quat), dim=-1))
-        #global  general
-        pred_quat = F.normalize(pred_quat, dim=-1)
         a = self._ins_outs(true)
         b = self._ins_outs(torch.cat((true[:, :8], pred_quat), dim=-1))
-        #return F.mse_loss(F.normalize(pred_quat), true[:, 8:])
 
-        #print(a.min(), a.max())
-        #print(b.min(), b.max())
-        #if general:
-
-        #    plt.clf()
-        #vis_a = b[0].detach().cpu().numpy()
-        #vis_b = b[1].detach().cpu().numpy()
-        #vis_at = a[0].detach().cpu().numpy()
-        #vis_bt = a[1].detach().cpu().numpy()
-        #print(pred_quat)
-        #if general:
-        #    plot_render(self.xyz.cpu().numpy(), vis_a, mode="in", figure=1, lims=(-1, 1))
-        #    general = False
-        #plot_render(self.xyz.cpu().numpy(), vis_b, mode="in", figure=2, lims=(-1, 1))
-        #plot_render(self.xyz.cpu().numpy(), vis_at, mode="in", figure=3, lims=(-1, 1))
-        #plot_render(self.xyz.cpu().numpy(), vis_bt, mode="in", figure=4, lims=(-1, 1))
-        #   general = False
-        #plot_render(self.xyz.cpu().numpy(), vis_b, mode="in", figure=2, lims=(-1, 1))
+        #plot_render(self.xyz.detach().cpu().numpy(), b[0].detach().cpu().numpy(), "in_inv", 1, (-1, 1))
+        #plot_render(self.xyz.detach().cpu().numpy(), a[0].detach().cpu().numpy(), "in_inv", 2, (-1, 1))
         #plt.show()
-        #return F.mse_loss(a[0], b[0], reduction="none")
 
         losses = []
         for i, (ai, bi) in enumerate(zip(a, b)):
-
-            losses.append(torch.sum(torch.pow(ai - bi, 2)))
-            #losses.append(F.mse_loss(ai, bi, reduction="sum"))
-        #return torch.stack(losses, dim=-1)
-        #print(torch.stack(losses, dim=-1))
+            l = torch.mean(torch.pow(ai - bi, 2)) * 100
+            losses.append(l)
         return torch.mean(torch.stack(losses, dim=-1))
 
 
@@ -541,7 +384,142 @@ class RotLoss:
                 distances = torch.sum(diffs, dim=-1)
                 err += torch.min(distances)
             batch_errs.append(err/m_pred.shape[0])
-        return torch.mean(torch.stack(batch_errs))
+        return torch.stack(batch_errs)
+
+
+class IoUAccuracy:
+    def __init__(self, render_size, device, reduce=True):
+        self.render_size = render_size
+        self.render_type = np.float64
+        self.eps = 1e-8
+        self.reduce = reduce
+        self.device = device
+
+        step = 2 / render_size
+        range = torch.tensor(np.arange(-1, 1 + step, step).astype(self.render_type))
+        xyz_list = torch.meshgrid([range, range, range])
+        self.xyz = torch.stack(xyz_list).to(device)
+
+    def preprocess_sq(self, p):
+        a, e, t, q = torch.split(p, (3, 2, 3, 4), dim=-1)
+        q = F.normalize(q, dim=-1)
+        return torch.cat([a, e, t, q], dim=-1)
+
+    def _ins_outs(self, p):
+        p = self.preprocess_sq(p.double())
+        results = []
+        for i in range(p.shape[0]):
+            a, e, t, q = torch.split(p[i], (3, 2, 3, 4))
+
+            # Create a rotation matrix from quaternion
+            rot = mat_from_quaternion(conjugate(q))[0]
+
+            coordinate_system = torch.einsum('ij,jabc->iabc', rot, self.xyz)
+
+            # #### Calculate inside-outside equation ####
+            # First the inner parts of equation (translate + divide with axis sizes)
+            x_translated = coordinate_system[0] / (a[0] * 2)
+            y_translated = coordinate_system[1] / (a[1] * 2)
+            z_translated = coordinate_system[2] / (a[2] * 2)
+
+            # Calculate powers of 2 to get rid of negative values)
+            A1 = torch.pow(x_translated, 2)
+            B1 = torch.pow(y_translated, 2)
+            C1 = torch.pow(z_translated, 2)
+
+            # Then calculate root
+            A = torch.pow(A1, (1 / e[1]))
+            B = torch.pow(B1, (1 / e[1]))
+            C = torch.pow(C1, (1 / e[0]))
+
+            E = torch.pow(A + B, (e[1] / e[0]))
+            inout = E + C
+
+            inout = torch.pow(inout, e[0])
+
+            #inout = A1 + B1 + C1
+            results.append(inout)
+        return torch.stack(results)
+
+    def __call__(self, true, pred_quat):
+        a = self._ins_outs(true)
+        b = self._ins_outs(torch.cat((true[:, :8], pred_quat), dim=-1))
+
+        accs = []
+        for i in range(true.shape[0]):
+            idxs_a = (a[i] <= 1)
+            idxs_b = (b[i] <= 1)
+
+            intersection = idxs_a & idxs_b
+            union = idxs_a | idxs_b
+            iou = torch.sum(intersection).double()/torch.sum(union).double()
+            accs.append(iou)
+
+        if self.reduce:
+            return torch.mean(torch.stack(accs))
+        return torch.stack(accs)
+
+
+class TestLoss:
+    def __init__(self, render_size, device, reduce=True):
+        self.render_size = render_size
+        self.render_type = np.float64
+        self.eps = 1e-8
+        self.reduce = reduce
+        self.device = device
+
+        step = 2 / render_size
+        rang = torch.tensor(np.arange(-1, 1 + step, step).astype(self.render_type))
+
+        self.axis = torch.tensor(torch.meshgrid([rang])[0]).to(device)
+        self.axis.requires_grad = False
+
+    def preprocess_sq(self, p):
+        a, e, t, q = torch.split(p, (3, 2, 3, 4), dim=-1)
+        q = F.normalize(q, dim=-1)
+        return torch.cat([a, e, t, q], dim=-1)
+
+    def _ins_outs(self, p):
+        p = p.double()
+        p = self.preprocess_sq(p)
+        results = []
+        for i in range(p.shape[0]):
+            #parameters = self.preprocess_sq(p[i])
+            a, e, t, q = torch.split(p[i], (3, 2, 3, 4))
+
+            rot = mat_from_quaternion(conjugate(q))[0]
+
+            axes = torch.einsum('ij,a->ija', rot, self.axis)
+
+            axis_n = axes[:, 0] / (a[0] * 2)
+            axis_o = axes[:, 1] / (a[1] * 2)
+            axis_p = axes[:, 2] / (a[2] * 2)
+
+            axis_n_pow = torch.pow(axis_n, 2)
+            axis_o_pow = torch.pow(axis_o, 2)
+            axis_p_pow = torch.pow(axis_p, 2)
+            axis_n_pow = torch.pow(axis_n_pow, 1 / e[1])
+            axis_o_pow = torch.pow(axis_o_pow, 1 / e[1])
+            axis_p_pow = torch.pow(axis_p_pow, 1 / e[0])
+
+            inout_axes_no = torch.pow(axis_n_pow + axis_o_pow, e[1] / e[0])
+
+            inout_axes_nop = inout_axes_no + axis_p_pow
+            inout_axes_nop_smoothed = torch.pow(inout_axes_nop, e[0])
+
+            results.append(torch.tanh(inout_axes_nop_smoothed))
+        return torch.stack(results)
+
+    def __call__(self, true, pred_quat):
+        pred_quat = F.normalize(pred_quat, dim=-1)
+        a = self._ins_outs(true)
+        b = self._ins_outs(torch.cat((true[:, :8], pred_quat), dim=-1))
+
+        losses = []
+        for i, (ai, bi) in enumerate(zip(a, b)):
+            losses.append(torch.sum(torch.pow(ai - bi, 2), dim=-1))
+        return torch.sum(torch.stack(losses, dim=0))
+
 
 
 if __name__ == "__main__":
@@ -549,26 +527,43 @@ if __name__ == "__main__":
     req_grad = False
     #loss = ChamferLoss(render_size=32, device=device)
     loss = ChamferQuatLoss(render_size=17, device=device)
+    test_loss = TestLoss(render_size=17, device=device)
+    acc = IoUAccuracy(render_size=64, device=device, reduce=False)
     #loss = RotLoss(render_size=32, device=device)
     loss2 = torch.nn.MSELoss(reduction="mean")
+    torch.autograd.set_detect_anomaly(True)
     losses = []
+    losses2 = []
     angles = []
     #loss_chamfer(, true_labels)
-    q = [0, 0, 0, 1]#randquat()
-    for factor in np.arange(0, 1.005, 0.005):
-        angle = factor*np.pi*2
-        e1, e2 = 1, 1
+    q1 = randquat() #np.array([0., 0., 0., 1.])
+    q2 = randquat()
+
+    q, q2 = slerp(q1, q2, np.arange(0, 1, 0.005))
+
+    for q1_tmp in q:
         a1, a2, a3 = 0.1, 0.2, 0.3
-
+        e1, e2 = 0.1, 0.1
+        print(q1_tmp, q2)
         true = torch.tensor(
-
-
-            #[[ 0.1084,  0.2769,  0.1893,  0.3213,  0.7323,  0.6345,  0.5084,  0.4530, -0.6100,  0.5794, -0.5103,  0.1780]]
             [
                 #[0.1569, 0.1464, 0.2784, 0.5986, 0.7872, 0.5468, 0.3737, 0.4898, 0.5681, -0.0243, -0.1486,  0.8091],
-                [0.2579, 0.2211, 0.2677, 0.2644, 0.8950, 0.4700, 0.4108, 0.5803, 0, 0, 0, 1],
-                [0.2579, 0.2211, 0.2677, 0.2644, 0.8950, 0.4700, 0.4108, 0.5803, 0, 0, 0, 1],
-                [0.2579, 0.2211, 0.2677, 0.2644, 0.8950, 0.4700, 0.4108, 0.5803, 0, 0, 0, 1]
+                [0.1896, 0.1658, 0.1188, 0.3597, 0.2725, 0.3978, 0.3468, 0.6117,
+                 -0.1053, -0.4174, -0.2588, 0.8647],
+                [0.2608, 0.2159, 0.2264, 0.2434, 0.6329, 0.3920, 0.5131, 0.5322,
+                 -0.5632, -0.1097, 0.8108, 0.1154],
+                [0.1868, 0.1307, 0.1280, 0.8009, 0.7467, 0.4715, 0.4299, 0.6119,
+                 -0.0936, 0.7399, -0.3462, 0.5692],
+                [0.1763, 0.1079, 0.2474, 0.1851, 0.5988, 0.4432, 0.4180, 0.5634,
+                 0.7479, -0.0710, -0.6485, -0.1225],
+                [0.2111, 0.1259, 0.2279, 0.2058, 0.4813, 0.5972, 0.6179, 0.6348,
+                 0.8595, -0.3013, 0.3755, -0.1716],
+                [0.1546, 0.2769, 0.2853, 0.4055, 0.6298, 0.4282, 0.4816, 0.6512,
+                 -0.4827, -0.0405, -0.8593, 0.1641],
+                [0.2650, 0.1910, 0.2770, 0.8741, 0.9287, 0.3966, 0.6300, 0.3568,
+                 -0.2571, 0.1417, 0.3046, -0.9061],
+                [0.1014, 0.2677, 0.1885, 0.7929, 0.9141, 0.3880, 0.4783, 0.4766,
+                 -0.0653, -0.1508, 0.8029, -0.5730]
                 #[0.2579, 0.2211, 0.2677, 0.2644, 0.8950, 0.4700, 0.4108, 0.5803, 0.9670, 0.1445, -0.1083, 0.1800]
                 #[0.1,  0.1,  0.10,  0.154,  0.1,  0.3786,  0.4682,  0.3593, -0.5879, -0.5388, -0.4251, -0.4282],
                 #[0, 0, 0, 1.]
@@ -581,45 +576,62 @@ if __name__ == "__main__":
             #[[0.0500, 0.0500, 0.1128, 0.3611, 0.0100, 0.4949, 0.2348, 0.6032, 0.2051, 0.7341]],
             #[[ 0.7071068, 0, 0, 0.7071068 ]],
             [
-                #[0.8172, -0.0995,  0.0672, -0.5637],
-                #[-0.2312,  0.7598, -0.0264,  0.6071]
-                [np.sin(angle / 2), 0, 0, np.cos(angle / 2)],
-                [0, np.sin(angle / 2), 0, np.cos(angle / 2)],
-                [0, 0, np.sin(angle / 2), np.cos(angle / 2)]
-
-                #[0.2, 0.02, 0.5, 0.1, 0.1, 0.5, 0.5, 0, 0.042749,0.375584,0.222923,0.898563]
+                [-0.1854, -0.3994, 0.0159, -0.0004],
+                [-0.0514, -0.0666, 0.0657, 0.0346],
+                [-0.1326, -0.3763, 0.3213, -0.0958],
+                [-0.0342, -0.1624, 0.2480, 0.1984],
+                [-0.0041, -0.3513, 0.1910, -0.1710],
+                [-0.2733, -0.6220, 0.1228, 0.1304],
+                [-0.2825, -0.2201, 0.0162, -0.0231],
+                [-0.1857, -0.1713, 0.0665, -0.1848]
             ],
             device='cuda:0', requires_grad=True)
 
-        #a, e, t, q = torch.split(pred, (3, 2, 3, 4), dim=-1)
-        #a_true, e_true, t_true, q_true = torch.split(true, (3, 2, 3, 4), dim=-1)
-
-        #l_a = loss(true, torch.cat((a, e_true, t_true, q_true), dim=-1))
-        #l_e = loss(true, torch.cat((a_true, e, t_true, q_true), dim=-1))
-        #l_t = loss(true, torch.cat((a_true, e_true, t, q_true), dim=-1))
-        #l_q = loss(true, torch.cat((a_true, e_true, t_true, q), dim=-1))
-
         #l = l_a + l_e + l_t + l_q
-        l = loss(true, pred)
+        l = test_loss(true, pred)
+        l2 = loss(true, pred)
+        #l = acc(true, pred)
 
-        losses.append(l.detach().cpu().numpy())
-        angles.append(angle)
-        #l.backward()
+        losses.append(l.detach().cpu().item())
+        losses2.append(l2.detach().cpu().item())
 
-        print("True: " + str(true))
-        print("Pred: " + str(pred))
-        print("----")
-        print(l)
-        #print(pred.grad)
-        print("-----------------------------------------------")
+        #print("True: " + str(true))
+        #print("Pred: " + str(pred))
+        #print("----")
+
+        diff = multiply(torch.from_numpy(q1_tmp), conjugate(torch.from_numpy(q2)))
+
+        #print(diff)
+        #print(to_magnitude(diff))
+        angles.append(to_magnitude(diff))
+        #print(to_euler_angle(diff))
+        #print(to_axis_angle(diff))
+
+        #print(l)
+        l.backward()
+        print(pred.grad)
+        #print("-----------------------------------------------")
 
     np_losses = np.array(losses)
-    x_axis_loss = np_losses[:, 0]
-    y_axis_loss = np_losses[:, 1]
-    z_axis_loss = np_losses[:, 2]
+    np_losses2 = np.array(losses2)
+    np_angles = np.array(angles)
+    print(np_losses)
 
+    plt.plot(np.rad2deg(np_angles), np_losses, label="3x1D")
+    #plt.plot(np.rad2deg(np_angles), np_losses[:, 0], label="3x1Dx")
+    #plt.plot(np.rad2deg(np_angles), np_losses[:, 1], label="3x1Dy")
+    #plt.plot(np.rad2deg(np_angles), np_losses[:, 2], label="3x1Dz")
 
-    xlimm = [0, 20]
+    plt.plot(np.rad2deg(np_angles), np_losses2, label="3D")
+    plt.legend()
+    plt.show()
+
+    exit()
+
+    # [0.79844526, - 0.47461738,  0.11456712, - 0.35227529]
+    # [0.67109209,  0.27354408,  0.66568145, - 0.17798102]
+
+    xlimm = [0, 10]
     plt.figure(4)
     plt.subplot(131)
     plt.plot(np.rad2deg(angles), x_axis_loss)

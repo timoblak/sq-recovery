@@ -73,12 +73,14 @@ def to_axis_angle(q):
 
     return torch.cat((x, y, z, angle), dim=-1)
 
+def to_magnitude(q):
+    xyz, w = torch.split(q, (3, 1), dim=-1)
+    return 2*torch.atan2(torch.norm(xyz, p=2), w)
 
 def to_euler_angle(q):
     qi, qj, qk, qr = torch.split(q, (1, 1, 1, 1), dim=-1)
 
     phi = torch.atan2((qi*qk + qj*qr), -(qj*qk - qi*qr))
-    print(- qi**2 - qj**2 - qk**2 - qr**2)
     theta = torch.acos(- qi**2 - qj**2 - qk**2 - qr**2)
     gamma = torch.atan2((qi*qk - qj*qr), (qj*qk + qi*qr))
 
