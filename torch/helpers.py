@@ -20,6 +20,7 @@ def quat2mat(q):
          [2*x*z - 2*w*y, 2*y*z + 2*w*x, 1 - 2*(x**2 + y**2)]]
     return np.array(M)
 
+
 def get_command(scanner_loc, fn, params):
     # Creates os command for the renderer
     command = scanner_loc + "scanner " + fn + " "
@@ -34,8 +35,8 @@ def get_command(scanner_loc, fn, params):
     command += "\n"
     return command
 
-def save_model(path, epoch, model, optimizer, loss):
 
+def save_model(path, epoch, model, optimizer, loss):
     torch.save({
         'epoch': epoch,
         'model_state_dict': model.state_dict(),
@@ -48,10 +49,12 @@ def load_model(path, model, optimizer):
     print("Loading model: " + path)
     checkpoint = torch.load(path)
     model.load_state_dict(checkpoint['model_state_dict'])
-    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    if optimizer is not None:
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     epoch = checkpoint['epoch']
     loss = checkpoint['loss']
     return epoch, model, optimizer, loss
+
 
 def save_compare_images(params_true, params_pred):
     for i, (true, pred) in enumerate(zip(params_true, params_pred)):
@@ -65,9 +68,11 @@ def save_compare_images(params_true, params_pred):
         command = get_command("../", "examples/" + str(i) + "_pred.bmp", params)
         os.system(command)
 
+
 def change_lr(opt, lr):
     for g in opt.param_groups:
         g['lr'] = lr
+
 
 def plot_render(meshgrid, np_array, mode="all", figure=1, lims=(0, 1), eps=0.1):
     from mpl_toolkits.mplot3d import Axes3D
@@ -102,7 +107,6 @@ def plot_render(meshgrid, np_array, mode="all", figure=1, lims=(0, 1), eps=0.1):
             a = opacity
         clr[i] = np.array([r, b, g, a])
 
-
     ax.scatter(
         meshgrid[0],
         meshgrid[1],
@@ -127,6 +131,7 @@ def plot_points(xs, ys, zs, figure=2, lims=(-1, 1), subplot=111):
     ax.set_xlabel('X Axis')
     ax.set_ylabel('Y Axis')
     ax.set_zlabel('Z Axis')
+
 
 def parse_csv(csvfile):
     with open(csvfile, "r") as f:

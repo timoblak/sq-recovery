@@ -16,9 +16,8 @@ from torch.utils import data
 from helpers import plot_render, plot_grad_flow, getBack, quat2mat, get_command
 from matplotlib import pyplot as plt
 from quaternion import rotate, mat_from_quaternion, conjugate
-from resnet import resnet18
 from helpers import load_model
-
+from models import GenericNetSQ, ResNetSQ
 
 class IoUAccuracy:
     def __init__(self, render_size, device, reduce=True):
@@ -94,9 +93,9 @@ if __name__ == "__main__":
     
     device = "cuda:0"
     abs_errs = []
-    net = resnet18(num_classes=4).to(device)
+    net = ResNetSQ(outputs=4, pretrained=False).to(device)
     acc = IoUAccuracy(render_size=64, device=device)
-    epoch , net, _, _ = load_model("models/model_tanh_3x1d_dropout.pt", net, None)
+    epoch, net, _, _ = load_model("trained_models/model_e4_16_5.pt", net, None)
     #np.random.seed(1234)
     #print(epoch)
     scanner_location = "../data/"
@@ -117,7 +116,7 @@ if __name__ == "__main__":
 
         params_true = np.concatenate([params, q])
 
-        img_np = cv2.imread("tmp1.bmp", 0).astype(np.float32) #/255
+        img_np = cv2.imread("tmp1.bmp", 0).astype(np.float32) / 255
         img_np = np.expand_dims(np.expand_dims(img_np, 0), 0)
         img = torch.from_numpy(img_np).to(device)
         #print(img.shape)
@@ -130,7 +129,6 @@ if __name__ == "__main__":
         
         true_param = torch.cat((block_params, quat_true), dim=-1)
         pred_param = quat_pred
-        
         
         print(true_param)
         print(pred_param)
