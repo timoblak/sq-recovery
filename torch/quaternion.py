@@ -87,6 +87,14 @@ def to_euler_angle(q):
     result = torch.cat((phi, theta, gamma), dim=-1)
     return result
 
+def randquat():
+    u = np.random.uniform(0, 1, (3,))
+    q = np.array([np.sqrt(1 - u[0]) * np.sin(2 * np.pi * u[1]),
+                  np.sqrt(1 - u[0]) * np.cos(2 * np.pi * u[1]),
+                  np.sqrt(u[0]) * np.sin(2 * np.pi * u[2]),
+                  np.sqrt(u[0]) * np.cos(2 * np.pi * u[2])])
+    return q
+
 
 if __name__ == "__main__":
     pt = np.array([1, 1, 1])

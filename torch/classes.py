@@ -15,8 +15,8 @@ from matplotlib import pyplot as plt
 from quaternion import rotate, mat_from_quaternion, conjugate, multiply, to_magnitude, to_euler_angle, to_axis_angle
 
 
-#torch.set_printoptions(sci_mode=False)
-
+#torch.set_printoptions(sci_mode=True)
+torch.set_printoptions(profile="full", precision=10)
 
 class H5Dataset(data.Dataset):
     def __init__(self, dataset_location, labels, train_split, dataset_file='dataset.h5'):
@@ -72,7 +72,7 @@ class H5Dataset(data.Dataset):
             index += self.n_train
         #print("Fetching index", index)
         with h5py.File(self.h5_filepath, 'r') as db:
-            X = db["sq"][index]
+            X = db["sq"][index] / 255
 
         #print("Dataset_access: ", time() - t_start)
         y = self.load_label(index)
@@ -84,7 +84,6 @@ class H5Dataset(data.Dataset):
         img = np.expand_dims(img, -1)
         img = np.transpose(img, (2, 0, 1))
         # Do preprocessing
-        img /= 255
         return img
 
     def load_label(self, ID):
@@ -399,21 +398,17 @@ class IoUAccuracy:
         range = torch.tensor(np.arange(-1, 1 + step, step).astype(self.render_type))
         xyz_list = torch.meshgrid([range, range, range])
         self.xyz = torch.stack(xyz_list).to(device)
+        self.xyz.requires_grad = False
 
-    def preprocess_sq(self, p):
-        a, e, t, q = torch.split(p, (3, 2, 3, 4), dim=-1)
-        q = F.normalize(q, dim=-1)
-        return torch.cat([a, e, t, q], dim=-1)
 
     def _ins_outs(self, p):
-        p = self.preprocess_sq(p.double())
+        p = p.double()
         results = []
         for i in range(p.shape[0]):
             a, e, t, q = torch.split(p[i], (3, 2, 3, 4))
 
             # Create a rotation matrix from quaternion
             rot = mat_from_quaternion(conjugate(q))[0]
-
             coordinate_system = torch.einsum('ij,jabc->iabc', rot, self.xyz)
 
             # #### Calculate inside-outside equation ####
@@ -434,30 +429,24 @@ class IoUAccuracy:
 
             E = torch.pow(A + B, (e[1] / e[0]))
             inout = E + C
-
+            
             inout = torch.pow(inout, e[0])
-
-            #inout = A1 + B1 + C1
             results.append(inout)
         return torch.stack(results)
 
     def __call__(self, true, pred_quat):
+        #pred_quat = F.normalize(pred_quat, dim=-1)
         a = self._ins_outs(true)
         b = self._ins_outs(torch.cat((true[:, :8], pred_quat), dim=-1))
+        
+        a_bin = (a <= 1)
+        b_bin = (b <= 1)
+        
+        intersection = a_bin & b_bin
+        union = a_bin | b_bin
+        
+        return torch.sum(intersection).double()/torch.sum(union).double() 
 
-        accs = []
-        for i in range(true.shape[0]):
-            idxs_a = (a[i] <= 1)
-            idxs_b = (b[i] <= 1)
-
-            intersection = idxs_a & idxs_b
-            union = idxs_a | idxs_b
-            iou = torch.sum(intersection).double()/torch.sum(union).double()
-            accs.append(iou)
-
-        if self.reduce:
-            return torch.mean(torch.stack(accs))
-        return torch.stack(accs)
 
 
 class TestLoss:

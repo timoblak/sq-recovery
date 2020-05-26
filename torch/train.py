@@ -9,12 +9,12 @@ import torch.optim as optim
 import torch.utils.data as data
 from torchsummary import summary
 from helpers import parse_csv, change_lr, save_model, load_model, save_compare_images, slerp
-from classes import H5Dataset, ChamferLoss, QuaternionLoss, RotLoss, ChamferQuatLoss
+from classes import H5Dataset, ChamferLoss, QuaternionLoss, RotLoss, ChamferQuatLoss, IoUAccuracy
 from models import GenericNetSQ, ResNetSQ
 import cv2
 
 # ----- CUDA
-device_name = "cuda:0" if torch.cuda.is_available() else "cpu"
+device_name = "cuda:0" #if torch.cuda.is_available() else "cpu"
 device = torch.device(device_name)
 print("Using device: " + device_name)
 
@@ -38,9 +38,9 @@ validation_generator = data.DataLoader(dataset, **{
 })
 
 # ----- Hyperparameter initialization
-MODEL_LOCATION = "trained_models/model.pt"
+MODEL_LOCATION = "trained_models/model_e4_32_32_2.pt"
 MAX_EPOCHS = 20000
-LEARNING_RATE = 1e-3
+LEARNING_RATE = 1e-4
 LOG_INTERVAL = 1
 RUNNING_MEAN = 100
 DEBUG = False
@@ -65,7 +65,8 @@ if CONTINUE_TRAINING:
 #loss_chamfer = ChamferLoss(17, device)
 #loss_quat = QuaternionLoss()
 #loss_rot = RotLoss(32, device)
-loss_chamfer_quat = ChamferQuatLoss(8, device)
+loss_chamfer_quat = ChamferQuatLoss(32, device)
+accuracy_estimator = IoUAccuracy(render_size=64, device=device)
 #scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.1, patience=4, verbose=True, threshold=1e-2)
 
 
@@ -79,6 +80,7 @@ changed = False
 for epoch in range(starting_epoch, MAX_EPOCHS):
     # ----- Data
     losses, val_losses = [], []
+    val_accuracies = []
     l1, l2 = [0], [0]
 
     net.train()
@@ -86,9 +88,10 @@ for epoch in range(starting_epoch, MAX_EPOCHS):
     # Training
 
     for batch_idx, (data, true_labels) in enumerate(training_generator):
-
+        
         # Transfer to GPU
         data, true_labels = data.to(device), true_labels.to(device)
+        
         optimizer.zero_grad()
 
         # Predict
@@ -96,6 +99,7 @@ for epoch in range(starting_epoch, MAX_EPOCHS):
 
         # Calculate loss and backpropagate
         loss = loss_chamfer_quat(true_labels, pred_labels)
+        
         loss.backward()
 
         # Update weights
@@ -121,10 +125,10 @@ for epoch in range(starting_epoch, MAX_EPOCHS):
 
         if batch_idx % LOG_INTERVAL == 0 and not DEBUG:
             sys.stdout.write("\033[K")
-            print('Train Epoch: {} Step: {} [{}/{} ({:.0f}%)]\tLoss: {:,.6f} (Block: {:.6f}, Quat: {:.6f})'.format(
+            print('Train Epoch: {} Step: {} [{}/{} ({:.0f}%)]\tLoss: {:,.6f}'.format(
                 epoch, batch_idx, batch_idx * len(data), len(training_generator.dataset),
-                       100. * batch_idx / len(training_generator), np.mean(losses[-RUNNING_MEAN:]), np.mean(l1[-RUNNING_MEAN:]), np.mean(l2[-RUNNING_MEAN:])), end="\r")
-
+                       100. * batch_idx / len(training_generator), np.mean(losses[-RUNNING_MEAN:])), end="\r")
+        
     # Print last
     sys.stdout.write("\033[K")
     print("------------------------------------------------------------------------")
@@ -145,16 +149,19 @@ for epoch in range(starting_epoch, MAX_EPOCHS):
             pred_labels = net(data)
 
             loss = loss_chamfer_quat(true_labels, pred_labels)
+            acc = accuracy_estimator(true_labels, pred_labels)
+
 
             if batch_idx == 0:
                 trues = true_labels.cpu().detach().numpy()
                 preds = pred_labels.cpu().detach().numpy()
                 save_compare_images(trues, np.concatenate((trues[:, :8], preds), axis=-1))
 
-            np_loss = loss.item()
-            val_losses.append(np_loss)
+            val_losses.append(loss.item())
+            val_accuracies.append(acc.item())
 
     val_loss_mean = np.mean(val_losses)
+    val_accuracy_mean = np.mean(val_accuracies)
     #scheduler.step(val_loss_mean)
     if best_val_loss is None:
         print("Saving first model..")
@@ -166,11 +173,11 @@ for epoch in range(starting_epoch, MAX_EPOCHS):
         save_model(MODEL_LOCATION, epoch, net, optimizer, {"loss": losses, "val_loss": val_losses})
     print("------------------------------------------------------------------------")
     print("VAL PREDICTIONS: ")
-    print("- PRED: ", pred_labels)
-    print("- TRUE: ", true_labels[:, 8])
+    print(pred_labels)
+    #print("- TRUE: ", true_labels[:, 8:])
     # print("- TRUE: ", torch.split(true_labels, (8, 4), dim=-1))
     print("------------------------------------------------------------------------")
-    print('Validation Epoch: {} Step: {} [(100%)]\tLoss: {:,.6f} (Block: {:.6f}, Quat: {:.6f})'.format(epoch, batch_idx, val_loss_mean, np.mean(l1), np.mean(l2)))
+    print('Validation Epoch: {} Step: {} [(100%)]\tLoss: {:,.6f}\tAccuracy: {:,.6f}'.format(epoch, batch_idx, val_loss_mean, val_accuracy_mean))
     print("========================================================================")
 
 
