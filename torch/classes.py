@@ -441,13 +441,19 @@ class IoUAccuracy:
         
         a_bin = (a <= 1)
         b_bin = (b <= 1)
-        
+
         intersection = a_bin & b_bin
+
         union = a_bin | b_bin
-        
-        return torch.sum(intersection).double()/torch.sum(union).double() 
+        iou = torch.sum(intersection).double()/torch.sum(union).double()
 
+        #if iou < 0.5 or iou > 0.95:
+        #    print(iou)
+        #    plot_render(self.xyz.cpu().numpy(), a.detach().cpu().numpy(), mode="in", figure=1, lims=(-1, 1))
+        #    plot_render(self.xyz.cpu().numpy(), b.detach().cpu().numpy(), mode="in", figure=2, lims=(-1, 1))
+        #    plt.show()
 
+        return iou
 
 class BinaryCrossEntropyLoss:
     def __init__(self, render_size, device, reduce=True):
@@ -504,40 +510,63 @@ class BinaryCrossEntropyLoss:
         b = self._ins_outs(torch.cat((true[:, :8], pred_quat), dim=-1))
         b_sigmoid = torch.sigmoid(5 * (1 - b))
 
-
         a[a <= 1] = 1.
         a[a > 1] = 0.
-
-        loss = F.binary_cross_entropy(b_sigmoid, a) * 100
+        loss = F.binary_cross_entropy(b_sigmoid, a) * 10
         
         return loss 
 
 
+class AngleLoss:
+    def __init__(self, device, reduce=True):
+        self.device = device
+        self.reduce = reduce
+
+        self.sqrt2pi = np.sqrt(2 * np.pi)
+        self.std = 0.2
+        self.multi = 2
+
+    def gx(self, x, mean):
+        return self.multi * torch.exp(-0.5*((x - mean) / self.std)**2)
+
+    def __call__(self, true, pred):
+        diff = multiply(torch.from_numpy(q1_tmp), conjugate(torch.from_numpy(q2)))
+        mag = to_magnitude(diff)
+
+        loss = self.gx(mag, np.pi/2) + self.gx(mag, (3*np.pi)/2)
+
+        return loss * self.multi
 
 if __name__ == "__main__":
     device = torch.device("cuda:0")
     req_grad = False
+
+
+
+    granularity = 32
     #loss = ChamferLoss(render_size=32, device=device)
-    loss1 = BinaryCrossEntropyLoss(render_size=16, device=device)
-    loss2 = ChamferQuatLoss(render_size=16, device=device)
-    
+
+    loss1 = BinaryCrossEntropyLoss(render_size=granularity, device=device)
+    loss2 = ChamferQuatLoss(render_size=granularity, device=device)
+    loss3 = AngleLoss(device=device)
+
     torch.autograd.set_detect_anomaly(True)
     losses1 = []
     losses2 = []
+    losses3 = []
 
     angles = []
     #loss_chamfer(, true_labels)
-    q1 = randquat() #np.array([0., 0., 0., 1.])
-    q2 = randquat()
+    q1 = randquat() #np.array([0, 0., 0, 1 ])#
+    q2 = randquat() #np.array([0.9998477, 0, 0, 0.0174524])#
 
     q, q2 = slerp(q1, q2, np.arange(0, 1, 0.005))
-
     for q1_tmp in q:
         a1, a2, a3 = 0.1, 0.2, 0.3
         e1, e2 = 0.1, 0.1
         true = torch.tensor(
             [
-                np.concatenate([[0.1896, 0.1658, 0.1188, 0.3597, 0.2725, 0.3978, 0.3468, 0.6117], q2])
+                np.concatenate([[a1, a2, a3, e1, e2, 0, 0, 0], q2])
              
             ], device='cuda:0')
             
@@ -549,20 +578,40 @@ if __name__ == "__main__":
             device='cuda:0', requires_grad=True)
 
         #l = l_a + l_e + l_t + l_q
-        l1 = loss1(true, pred)
-        l2 = loss2(true, pred)
 
+        l2 = loss2(true, pred)
+        l3 = loss3(true[:, 8:], pred)
+        l1 = l2 + l3
         losses1.append(l1.detach().cpu().item())
         losses2.append(l2.detach().cpu().item())
+        losses3.append(l3.detach().cpu().item())
         
         #l1.backward()
         #l2.backward()
 
         #print("Grads: ", pred.grad)
-        print("-------------------------------")
+        diff = multiply(torch.from_numpy(q1_tmp), conjugate(torch.from_numpy(q2)))
 
-    np_losses = np.array(losses1)
-    np_losses = np.array(losses2)
-    print(np_losses)
+        #print(to_magnitude(diff))
+        angles.append(to_magnitude(diff))
 
-    
+        # print("-----------------------------------------------")
+
+    np_losses1 = np.array(losses1)
+    np_losses2 = np.array(losses2)
+    np_losses3 = np.array(losses3)
+    np_angles = np.array(angles)
+
+    plt.plot(np.rad2deg(np_angles), np_losses1, label="Joined")
+    plt.axvline(x=90)
+    plt.plot(np.rad2deg(np_angles), np_losses2, label="CQL")
+    plt.axvline(x=90)
+    plt.plot(np.rad2deg(np_angles), np_losses3, label="Angle")
+    plt.axvline(x=90)
+    plt.legend()
+    plt.show()
+
+    exit()
+
+
+
