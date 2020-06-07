@@ -530,11 +530,12 @@ class AngleLoss:
         return self.multi * torch.exp(-0.5*((x - mean) / self.std)**2)
 
     def __call__(self, true, pred):
-        diff = multiply(torch.from_numpy(q1_tmp), conjugate(torch.from_numpy(q2)))
+        diff = multiply(true, conjugate(pred))
         mag = to_magnitude(diff)
-
         loss = self.gx(mag, np.pi/2) + self.gx(mag, (3*np.pi)/2)
 
+        if self.reduce:
+            return torch.mean(loss * self.multi)
         return loss * self.multi
 
 if __name__ == "__main__":
@@ -566,6 +567,7 @@ if __name__ == "__main__":
         e1, e2 = 0.1, 0.1
         true = torch.tensor(
             [
+                np.concatenate([[a1, a2, a3, e1, e2, 0, 0, 0], q2]),
                 np.concatenate([[a1, a2, a3, e1, e2, 0, 0, 0], q2])
              
             ], device='cuda:0')
@@ -573,6 +575,7 @@ if __name__ == "__main__":
 
         pred = torch.tensor(
             [
+                q1_tmp,
                 q1_tmp
             ],
             device='cuda:0', requires_grad=True)
@@ -586,10 +589,10 @@ if __name__ == "__main__":
         losses2.append(l2.detach().cpu().item())
         losses3.append(l3.detach().cpu().item())
         
-        #l1.backward()
+        l1.backward()
         #l2.backward()
 
-        #print("Grads: ", pred.grad)
+        print("Grads: ", pred.grad)
         diff = multiply(torch.from_numpy(q1_tmp), conjugate(torch.from_numpy(q2)))
 
         #print(to_magnitude(diff))
