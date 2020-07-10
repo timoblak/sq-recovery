@@ -384,15 +384,16 @@ class RotLoss:
 
 
 class IoUAccuracy:
-    def __init__(self, render_size, device, reduce=True):
+    def __init__(self, render_size, device, reduce=True, full=False):
         self.render_size = render_size
         self.render_type = np.float64
         self.eps = 1e-8
         self.reduce = reduce
         self.device = device
+        self.full = full
 
-        step = 2 / render_size
-        range = torch.tensor(np.arange(-1, 1 + step, step).astype(self.render_type))
+        step = 1 / render_size
+        range = torch.tensor(np.arange(0, 1+step, step).astype(self.render_type))
         xyz_list = torch.meshgrid([range, range, range])
         self.xyz = torch.stack(xyz_list).to(device)
         self.xyz.requires_grad = False
@@ -404,15 +405,16 @@ class IoUAccuracy:
         for i in range(p.shape[0]):
             a, e, t, q = torch.split(p[i], (3, 2, 3, 4))
 
-            # Create a rotation matrix from quaternion
             rot = mat_from_quaternion(conjugate(q))[0]
+            t = torch.matmul(rot, t)
+
             coordinate_system = torch.einsum('ij,jabc->iabc', rot, self.xyz)
 
             # #### Calculate inside-outside equation ####
             # First the inner parts of equation (translate + divide with axis sizes)
-            x_translated = coordinate_system[0] / (a[0] * 2)
-            y_translated = coordinate_system[1] / (a[1] * 2)
-            z_translated = coordinate_system[2] / (a[2] * 2)
+            x_translated = (coordinate_system[0] - t[0]) / a[0]
+            y_translated = (coordinate_system[1] - t[1]) / a[1]
+            z_translated = (coordinate_system[2] - t[2]) / a[2]
 
             # Calculate powers of 2 to get rid of negative values)
             A1 = torch.pow(x_translated, 2)
@@ -431,11 +433,15 @@ class IoUAccuracy:
             results.append(inout)
         return torch.stack(results)
 
-    def __call__(self, true, pred_quat):
+    def __call__(self, true, pred):
         #pred_quat = F.normalize(pred_quat, dim=-1)
         a = self._ins_outs(true)
-        b = self._ins_outs(torch.cat((true[:, :8], pred_quat), dim=-1))
-        
+
+        if self.full:
+            b = self._ins_outs(pred)
+        else: 
+            b = self._ins_outs(torch.cat((true[:, :8], pred), dim=-1))
+
         a_bin = (a <= 1)
         b_bin = (b <= 1)
 
@@ -446,9 +452,9 @@ class IoUAccuracy:
 
         #if iou < 0.5 or iou > 0.95:
         #    print(iou)
-        #plot_render(self.xyz.cpu().numpy(), a.detach().cpu().numpy(), mode="in", figure=1, lims=(-1, 1))
-        #plot_render(self.xyz.cpu().numpy(), b.detach().cpu().numpy(), mode="in", figure=2, lims=(-1, 1))
-        #plt.show()
+        #plot_render(self.xyz.cpu().numpy(), a[0].detach().cpu().numpy(), mode="in", figure=1, lims=(-1, 1))
+        #plot_render(self.xyz.cpu().numpy(), b[0].detach().cpu().numpy(), mode="in", figure=2, lims=(-1, 1))
+        #lt.show()
 
         return iou
 

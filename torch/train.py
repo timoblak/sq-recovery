@@ -38,7 +38,7 @@ validation_generator = data.DataLoader(dataset, **{
 })
 
 # ----- Hyperparameter initialization
-MODEL_LOCATION = "trained_models/model_e4_32_32_angle_2.pt"
+MODEL_LOCATION = "trained_models/model_full.pt"
 MAX_EPOCHS = 20000
 LEARNING_RATE = 1e-4
 LOG_INTERVAL = 1
@@ -49,9 +49,7 @@ CONTINUE_TRAINING = False
 
 # ----- Net initialization
 net = ResNetSQ(outputs=4, pretrained=True).to(device)
-#net = SQNet(outputs=4, fcn=64, dropout=0, clip_values=False).to(device)
 summary(net, input_size=(1, 256, 256))
-#exit()
 
 optimizer = optim.Adam(net.parameters(), lr=LEARNING_RATE, weight_decay=0)
 
@@ -61,24 +59,13 @@ if CONTINUE_TRAINING:
     starting_epoch, net, optimizer, _ = load_model(MODEL_LOCATION, net, optimizer)
 
 # ----- Training config
-loss_criterion_mse = nn.MSELoss(reduction="mean")
-#loss_chamfer = ChamferLoss(17, device)
-#loss_quat = QuaternionLoss()
-#loss_rot = RotLoss(32, device)
-loss_criterion_quat = ChamferQuatLoss(32, device)
-#loss_criterion2 = AngleLoss(device=device, std=0.2, multi=2)
-#loss_criterion = BinaryCrossEntropyLoss(8, device)
-accuracy_estimator = IoUAccuracy(render_size=64, device=device)
-#scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.1, patience=4, verbose=True, threshold=1e-2)
 
+loss_criterion = ChamferLoss(32, device)
+accuracy_estimator = IoUAccuracy(render_size=64, device=device, full=True)
 
-g_clip = 0.5
-#for p in net.parameters():
-#    p.register_hook(lambda grad: torch.clamp(grad, -g_clip, g_clip))
 
 # ----- Main loop
 best_val_loss = None
-changed = False
 mean_losses, mean_val_losses = [], []
 for epoch in range(starting_epoch, MAX_EPOCHS):
     # ----- Data
@@ -98,13 +85,11 @@ for epoch in range(starting_epoch, MAX_EPOCHS):
         optimizer.zero_grad()
 
         # Predict
-        pred_block, pred_quat = net(data)
-        pred_labels = torch.cat([pred_block, pred_quat], dim=1) 
-        
+        pred_size, pred_shape, pred_position, pred_quat = net(data)
+        pred_labels = torch.cat([pred_size, pred_shape, pred_position, pred_quat], dim=1) 
+
         # Calculate loss and backpropagate
-        l1 = loss_criterion_mse(true_labels[:, :8], pred_block) 
-        l2 = loss_criterion_quat(true_labels, pred_quat)
-        loss = l1 + l2
+        loss = loss_criterion(true_labels, pred_labels) 
         loss.backward()
         
         # Update weights
@@ -119,22 +104,20 @@ for epoch in range(starting_epoch, MAX_EPOCHS):
             print(batch_idx)
             print("---------------------LABELS (pred - true)------------------------")
             print(pred_labels)
-            print(true_labels[:, 8:])
-            print(true_labels[:, :8])
+            print(true_labels)
             print("---------------------LOSS------------------------")
             print(np_loss)
-            sleep(0.5)
 
         if torch.any(torch.isnan(net.encoder.fc[0].weight.grad)):
             print("--------------- NAN GRADS!!!! ---------------")
 
         if batch_idx % LOG_INTERVAL == 0 and not DEBUG:
             sys.stdout.write("\033[K")
-            print('Train Epoch: {} Step: {} [{}/{} ({:.0f}%)]\tLoss: {:,.6f} ({:,.6f}, {:,.6f})'.format(
+            print('Train Epoch: {} Step: {} [{}/{} ({:.0f}%)]\tLoss: {:,.6f}'.format(
                 epoch, batch_idx, batch_idx * len(data), len(training_generator.dataset),
-                       100. * batch_idx / len(training_generator), np.mean(losses[-RUNNING_MEAN:]), l1, l2), end="\r")
+                       100. * batch_idx / len(training_generator), np.mean(losses[-RUNNING_MEAN:])), end="\r")
         
-    # Print last
+    # Print last    
     sys.stdout.write("\033[K")
     print("------------------------------------------------------------------------")
     print("TRAIN PREDICTIONS: ")
@@ -155,15 +138,13 @@ for epoch in range(starting_epoch, MAX_EPOCHS):
             
 
             # Predict
-            pred_block, pred_quat = net(data)
-            pred_labels = torch.cat([pred_block, pred_quat], dim=1)
+            pred_size, pred_shape, pred_position, pred_quat = net(data)
+            pred_labels = torch.cat([pred_size, pred_shape, pred_position, pred_quat], dim=1) 
+  
             # Calculate loss and backpropagate
-            l1 = loss_criterion_mse(true_labels[:, :8], pred_block) 
-            l2 = loss_criterion_quat(true_labels, pred_quat)
-            loss = l1 + l2
+            
             acc = accuracy_estimator(true_labels, pred_quat)
-
-
+            
             if batch_idx == 0:
                 trues = true_labels.cpu().detach().numpy()
                 preds = pred_quat.cpu().detach().numpy()
