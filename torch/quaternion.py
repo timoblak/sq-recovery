@@ -3,6 +3,7 @@ import numpy as np
 import torch.nn.functional as F
 from matplotlib import pyplot as plt
 
+
 torch.set_printoptions(sci_mode=False)
 np.set_printoptions(suppress=True)
 
@@ -19,6 +20,9 @@ def conjugate(quaternion):
     xyz, w = torch.split(quaternion, (3, 1), dim=-1)
     return torch.cat((xyz*-1, w), dim=-1)
 
+def conjugate_np(quaternion):
+    xyz, w = np.split(quaternion, (3,), axis=-1)
+    return np.concatenate((xyz*-1, w), axis=-1)
 
 def multiply(quaternion1, quaternion2):
     x1, y1, z1, w1 = torch.split(quaternion1, (1, 1, 1, 1), dim=-1)
@@ -28,6 +32,15 @@ def multiply(quaternion1, quaternion2):
     z = x1 * y2 - y1 * x2 + z1 * w2 + w1 * z2
     w = -x1 * x2 - y1 * y2 - z1 * z2 + w1 * w2
     return torch.cat((x, y, z, w), dim=-1)
+
+def multiply_np(quaternion1, quaternion2):
+    x1, y1, z1, w1 = np.split(quaternion1, (1, 2, 3), axis=-1)
+    x2, y2, z2, w2 = np.split(quaternion2, (1, 2, 3), axis=-1)
+    x = x1 * w2 + y1 * z2 - z1 * y2 + w1 * x2
+    y = -x1 * z2 + y1 * w2 + z1 * x2 + w1 * y2
+    z = x1 * y2 - y1 * x2 + z1 * w2 + w1 * z2
+    w = -x1 * x2 - y1 * y2 - z1 * z2 + w1 * w2
+    return np.concatenate((x, y, z, w), axis=-1)
 
 
 def mat_from_quaternion(quaternion):
@@ -53,6 +66,33 @@ def mat_from_quaternion(quaternion):
     output_shape = (1, 3, 3)
     return torch.reshape(matrix, shape=output_shape)
 
+def mat_from_quaternion_np(quaternion):
+    assert quaternion.shape[-1] == 4
+
+    if len(quaternion.shape) == 1:
+        quaternion = np.expand_dims(quaternion, 0)
+
+    x, y, z, w = np.split(quaternion, (1, 2, 3), axis=-1)
+
+    tx = 2.0 * x
+    ty = 2.0 * y
+    tz = 2.0 * z
+    twx = tx * w
+    twy = ty * w
+    twz = tz * w
+    txx = tx * x
+    txy = ty * x
+    txz = tz * x
+    tyy = ty * y
+    tyz = tz * y
+    tzz = tz * z
+    matrix = np.stack((1.0 - (tyy + tzz), txy - twz, txz + twy,
+                          txy + twz, 1.0 - (txx + tzz), tyz - twx,
+                          txz - twy, tyz + twx, 1.0 - (txx + tyy)), axis=-1)
+
+    output_shape = (len(quaternion), 3, 3)
+    return np.reshape(matrix, newshape=output_shape)
+
 
 def test_quat_loss(ytrue, ypred, reduce=True):
     theta = torch.tensor(1) - 2 * torch.abs(torch.tensor(0.5) - torch.pow(torch.einsum('ji,ji->j', ytrue, ypred), 2))
@@ -76,6 +116,15 @@ def to_axis_angle(q):
 def to_magnitude(q):
     xyz, w = torch.split(q, (3, 1), dim=-1)
     return 2*torch.atan2(torch.norm(xyz, p=2), w)
+
+def to_magnitude_np(q):
+    assert q.shape[-1] == 4
+
+    if len(q.shape) == 1:
+        q = np.expand_dims(q, 0)
+
+    xyz, w = np.split(q, (3,), axis=-1)
+    return 2*np.arctan2(normalize(xyz), w)
 
 def to_euler_angle(q):
     qi, qj, qk, qr = torch.split(q, (1, 1, 1, 1), dim=-1)

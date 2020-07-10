@@ -117,6 +117,7 @@ class ChamferLoss:
         range = torch.tensor(np.arange(0, 1+step, step).astype(self.render_type))
         xyz_list = torch.meshgrid([range, range, range])
         self.xyz = torch.stack(xyz_list).to(device)
+        self.xyz[self.xyz == 0] += 1e-4
         self.xyz.requires_grad = False
 
     @staticmethod
@@ -125,7 +126,7 @@ class ChamferLoss:
         a, e, t, q = torch.split(p, (3, 2, 3, 4))
         a = torch.clamp(a, min=0.05, max=1)
         e = torch.clamp(e, min=0.1, max=1)
-        t = torch.clamp(t, min=0.01, max=1)
+        t = torch.clamp(t, min=0, max=1)
         #return torch.cat([a, t, q], dim=-1)
         return torch.cat([a, e, t, q], dim=-1)
 
@@ -145,6 +146,7 @@ class ChamferLoss:
             # Create a rotation matrix from conjugated quaternion
             rot = mat_from_quaternion(conjugate(q))[0]
             t = torch.matmul(rot, t)
+
             coordinate_system = torch.einsum('ij,jabc->iabc', rot, self.xyz)
 
             # #### Calculate inside-outside equation ####
@@ -157,7 +159,9 @@ class ChamferLoss:
             A1 = torch.pow(x_translated, 2)
             B1 = torch.pow(y_translated, 2)
             C1 = torch.pow(z_translated, 2)
-
+            A1[A1 == 0] += 1e-4
+            B1[B1 == 0] += 1e-4
+            C1[C1 == 0] += 1e-4
             # Then calculate root
             A = torch.pow(A1, (1 / e[1]))
             B = torch.pow(B1, (1 / e[1]))
@@ -165,8 +169,10 @@ class ChamferLoss:
 
             E = torch.pow(A + B, (e[1] / e[0]))
             inout = E + C
+
             inout = torch.pow(inout, e[0])
 
+            inout = torch.sigmoid(5 * (1 - inout))
             results.append(inout)
         return torch.stack(results)
 
@@ -176,29 +182,14 @@ class ChamferLoss:
         a = self._ins_outs(true)
 
         b = self._ins_outs(pred)
-        print(a.min(), a.max())
-        print(b.min(), b.max())
 
-        #print(pred)
-        x = self.xyz.cpu().numpy()
-        #for i in range(1):#true.shape[0]):
-        vis_a = a[0].detach().cpu().numpy()
-        vis_b = b[0].detach().cpu().numpy()
+        losses = []
+        for i, (ai, bi) in enumerate(zip(a, b)):
+            l = torch.mean(torch.pow(ai - bi, 2)) * 100
+            losses.append(l)
+        ls = torch.mean(torch.stack(losses, dim=-1))
 
-        plot_render(x, vis_a, mode="in", figure=1)
-        plot_render(x, vis_b, mode="in", figure=2)
-        plt.show()
-            #plot_render(x, np.abs(vis_a-vis_b), mode="in", figure=3)
-        exit()
-
-        #vis_a[vis_a <= 1] = 1; vis_a[vis_a > 1] = 0
-        #vis_b[vis_b <= 1] = 1; vis_b[vis_b > 1] = 0
-        #iou = np.bitwise_and(vis_a.astype(bool), vis_b.astype(bool))
-        #plot_render(self.xyz.cpu().numpy(), iou.astype(int), mode="bit", figure=3)
-        #plt.pause(0.3)
-        #plt.waitforbuttonpress(0)
-
-        return torch.sum(torch.pow(a-b, 2)) / true.shape[0]
+        return ls
 
 
 general = True
@@ -269,7 +260,13 @@ class ChamferQuatLoss:
         for i, (ai, bi) in enumerate(zip(a, b)):
             l = torch.mean(torch.pow(ai - bi, 2)) * 100
             losses.append(l)
-        return torch.mean(torch.stack(losses, dim=-1))
+        ls = torch.mean(torch.stack(losses, dim=-1))
+
+        #if ls < 0.001:
+        #    plot_render(self.xyz.detach().cpu().numpy(), b[0].detach().cpu().numpy(), "in_inv", 1, (-1, 1))
+        #    plot_render(self.xyz.detach().cpu().numpy(), a[0].detach().cpu().numpy(), "in_inv", 2, (-1, 1))
+        #    plt.show()
+        return ls
 
 
 class RotLoss:
@@ -449,9 +446,9 @@ class IoUAccuracy:
 
         #if iou < 0.5 or iou > 0.95:
         #    print(iou)
-        #    plot_render(self.xyz.cpu().numpy(), a.detach().cpu().numpy(), mode="in", figure=1, lims=(-1, 1))
-        #    plot_render(self.xyz.cpu().numpy(), b.detach().cpu().numpy(), mode="in", figure=2, lims=(-1, 1))
-        #    plt.show()
+        #plot_render(self.xyz.cpu().numpy(), a.detach().cpu().numpy(), mode="in", figure=1, lims=(-1, 1))
+        #plot_render(self.xyz.cpu().numpy(), b.detach().cpu().numpy(), mode="in", figure=2, lims=(-1, 1))
+        #plt.show()
 
         return iou
 
@@ -518,13 +515,12 @@ class BinaryCrossEntropyLoss:
 
 
 class AngleLoss:
-    def __init__(self, device, reduce=True):
+    def __init__(self, device, std=0.2, reduce=True):
         self.device = device
         self.reduce = reduce
 
-        self.sqrt2pi = np.sqrt(2 * np.pi)
-        self.std = 0.2
-        self.multi = 2
+        self.std = std
+        self.multi = 3
 
     def gx(self, x, mean):
         return self.multi * torch.exp(-0.5*((x - mean) / self.std)**2)
@@ -535,8 +531,8 @@ class AngleLoss:
         loss = self.gx(mag, np.pi/2) + self.gx(mag, (3*np.pi)/2)
 
         if self.reduce:
-            return torch.mean(loss * self.multi)
-        return loss * self.multi
+            return torch.mean(loss)
+        return loss
 
 if __name__ == "__main__":
     device = torch.device("cuda:0")
@@ -547,52 +543,50 @@ if __name__ == "__main__":
     granularity = 32
     #loss = ChamferLoss(render_size=32, device=device)
 
-    loss1 = BinaryCrossEntropyLoss(render_size=granularity, device=device)
     loss2 = ChamferQuatLoss(render_size=granularity, device=device)
-    loss3 = AngleLoss(device=device)
+    acc = IoUAccuracy(render_size=128, device=device)
 
     torch.autograd.set_detect_anomaly(True)
     losses1 = []
-    losses2 = []
-    losses3 = []
+    accs = []
 
     angles = []
     #loss_chamfer(, true_labels)
-    q1 = randquat() #np.array([0, 0., 0, 1 ])#
-    q2 = randquat() #np.array([0.9998477, 0, 0, 0.0174524])#
-
-    q, q2 = slerp(q1, q2, np.arange(0, 1, 0.005))
+    q1b = np.array([0, 0., 0, 1 ])#randquat() #np.array([-0.34810747, -0.818965, -0.44213669, -0.11239513])
+    q1e = np.array([0.9998477, 0, 0, 0.0174524])#randquat() #
+    #q2 = np.array([0, 0.9998477, 0, 0.0174524])  # randquat() #
+    #q2 = np.array([0, 0, 0.9998477, 0.0174524])  # randquat() #
+    q2 = np.array([-0.45149812, -0.24370563, 0.78129727, -0.35543165])
+    q, _ = slerp(q1b, q1e, np.arange(0, 1, 0.005))
     for q1_tmp in q:
-        a1, a2, a3 = 0.1, 0.2, 0.3
-        e1, e2 = 0.1, 0.1
+        a1, a2, a3 = 46.23926841/255, 28.11488432/255, 66.29828836/255
+        e1, e2 = 0.65549463, 0.15757771
         true = torch.tensor(
             [
-                np.concatenate([[a1, a2, a3, e1, e2, 0, 0, 0], q2]),
                 np.concatenate([[a1, a2, a3, e1, e2, 0, 0, 0], q2])
-             
+
             ], device='cuda:0')
             
 
         pred = torch.tensor(
             [
-                q1_tmp,
                 q1_tmp
             ],
             device='cuda:0', requires_grad=True)
 
         #l = l_a + l_e + l_t + l_q
 
-        l2 = loss2(true, pred)
-        l3 = loss3(true[:, 8:], pred)
-        l1 = l2 + l3
-        losses1.append(l1.detach().cpu().item())
-        losses2.append(l2.detach().cpu().item())
-        losses3.append(l3.detach().cpu().item())
+        l = loss2(true, pred)
+        a = acc(true, pred)
+
+        losses1.append(l.detach().cpu().item())
+        accs.append(a.detach().cpu().item())
+        #losses3.append(l3.detach().cpu().item())
         
-        l1.backward()
+        #l1.backward()
         #l2.backward()
 
-        print("Grads: ", pred.grad)
+        #print("Grads: ", pred.grad)
         diff = multiply(torch.from_numpy(q1_tmp), conjugate(torch.from_numpy(q2)))
 
         #print(to_magnitude(diff))
@@ -601,17 +595,28 @@ if __name__ == "__main__":
         # print("-----------------------------------------------")
 
     np_losses1 = np.array(losses1)
-    np_losses2 = np.array(losses2)
-    np_losses3 = np.array(losses3)
+    np_accs = np.array(accs)
+
     np_angles = np.array(angles)
 
-    plt.plot(np.rad2deg(np_angles), np_losses1, label="Joined")
-    plt.axvline(x=90)
-    plt.plot(np.rad2deg(np_angles), np_losses2, label="CQL")
-    plt.axvline(x=90)
-    plt.plot(np.rad2deg(np_angles), np_losses3, label="Angle")
-    plt.axvline(x=90)
-    plt.legend()
+    fig, ax1 = plt.subplots()
+
+    color = 'tab:red'
+    ax1.set_xlabel('Angle (deg)')
+    ax1.set_ylabel('Loss', color=color)
+    ax1.plot(np.rad2deg(np_angles), np_losses1, color=color)
+    ax1.tick_params(axis='y', labelcolor=color)
+    ax1.axvline(x=90)
+
+    ax2 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
+
+    color = 'tab:blue'
+    ax2.set_ylabel('Accuracy', color=color)  # we already handled the x-label with ax1
+    ax2.plot(np.rad2deg(np_angles), np_accs, color=color)
+    ax2.tick_params(axis='y', labelcolor=color)
+    ax2.axvline(x=90)
+    fig.tight_layout()  # otherwise the right y-label is slightly clipped
+
     plt.show()
 
     exit()

@@ -76,19 +76,19 @@ def change_lr(opt, lr):
 
 def plot_render(meshgrid, np_array, mode="all", figure=1, lims=(0, 1), eps=0.1):
     from mpl_toolkits.mplot3d import Axes3D
-    fig = plt.figure(figure)
-    ax = fig.gca(projection='3d')
+    fig = plt.figure(1)
+    ax = fig.add_subplot(1, 2, figure, projection='3d')
     ax.set_aspect("auto")
 
     if mode == "all":
         disp = (np_array >= 0)
         opacity = 0.1
     elif mode == "in":
-        disp = (np_array < 1)
-        opacity = 0.1
+        disp = (np_array <= 1)
+        opacity = 0.01
     elif mode == "in_inv":
-        disp = (np_array > 0.01)
-        opacity = 0.1
+        disp = (np_array > 0.5)
+        opacity = 0.00
     elif mode == "bit":
         disp = (np_array == 1)
         opacity = 0
@@ -119,6 +119,7 @@ def plot_render(meshgrid, np_array, mode="all", figure=1, lims=(0, 1), eps=0.1):
     ax.set_xlabel('X Axis')
     ax.set_ylabel('Y Axis')
     ax.set_zlabel('Z Axis')
+
 
 
 def plot_points(xs, ys, zs, figure=2, lims=(-1, 1), subplot=111):
