@@ -28,6 +28,26 @@ class RotationHead(nn.Module):
 
         return x
 
+class BlockHead(nn.Module):
+    def __init__(self, in_features, dense=False):
+        super(BlockHead, self).__init__()
+
+        self.dense = dense
+
+        if dense:
+            self.out_layer_inter = nn.Linear(in_features, 8)
+            self.relu = nn.LeakyReLU()
+
+        self.out_layer = nn.Sequential(
+            nn.Linear(in_features, 8)
+        )
+
+    def forward(self, x):
+        if self.dense:
+            x = self.relu(self.out_layer_inter(x))
+        x = self.out_layer(x)
+
+        return x
 
 class GenericNetSQ(nn.Module):
     def __init__(self, outputs, fcn=256, dropout=0):
@@ -94,14 +114,16 @@ class ResNetSQ(nn.Module):
             nn.Linear(512, self.fcn), nn.LeakyReLU(),
             nn.Linear(self.fcn, self.fcn), nn.LeakyReLU()
         )
-
-        self.output = RotationHead(self.fcn)
+        
+        self.output1 = BlockHead(self.fcn)
+        self.output2 = RotationHead(self.fcn)
 
     def forward(self, x):
         # Graph
 
         x = self.encoder(x)
 
-        x = self.output.forward(x)
+        x_block = self.output1.forward(x)
+        x_quat = self.output2.forward(x)
 
-        return x
+        return  x_block, x_quat
