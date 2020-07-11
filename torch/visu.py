@@ -70,7 +70,7 @@ if __name__ == "__main__":
     # Create SQ pointcloud
     #params = [0.23, 0.11, 0.29, 0.1, 0.1]
     params_true = randsq()
-    print(params_true)
+    print(params_true, q_true)
     params_pred = [0.2, 0.2, 0.2, 0.5, 0.5, 0.5, 0.5, 0.5]
 
     pts = sample_points_uniform(params_true, rad_resolution=0.1)
@@ -82,40 +82,15 @@ if __name__ == "__main__":
 
     # Line mesh for true quadric
     hull_ls1 = o3d.geometry.LineSet.create_from_triangle_mesh(hull)
-    hull_ls2 = o3d.geometry.LineSet.create_from_triangle_mesh(hull)
-    hull_ls3 = o3d.geometry.LineSet.create_from_triangle_mesh(hull)
-    hull_ls4 = o3d.geometry.LineSet.create_from_triangle_mesh(hull)
-
-    hull_ls1.paint_uniform_color((1, 0, 0))
-    hull_ls2.paint_uniform_color((0, 1, 0))
-    hull_ls3.paint_uniform_color((0, 0, 1))
-    hull_ls4.paint_uniform_color((0, 1, 1))
-
-    print(q_true)
-    print(mat_from_quaternion_np(conjugate_np(multiply_np(q_true, [0, 0, 0, 1])))[0])
-    print(multiply_np(q_true, [1, 0, 0, 0]))
-    print(mat_from_quaternion_np(conjugate_np(multiply_np(q_true, [1, 0, 0, 0])))[0])
-    print(multiply_np(q_true, [0, 1, 0, 0]))
-    print(mat_from_quaternion_np(conjugate_np(multiply_np(q_true, [0, 1, 0, 0])))[0])
-    print(multiply_np(q_true, [0, 0, 1, 0]))
-    print(mat_from_quaternion_np(conjugate_np(multiply_np(q_true, [0, 0, 1, 0])))[0])
 
     # TODO: is rotation without conjugation correct?
     hull_ls1.rotate(mat_from_quaternion_np(q_true)[0], [0, 0, 0])
-    hull_ls2.rotate(mat_from_quaternion_np(multiply_np(q_true, [0, 1, 0, 0]))[0], [0, 0, 0])
-    hull_ls3.rotate(mat_from_quaternion_np(multiply_np(q_true, [1, 0, 0, 0]))[0], [0, 0, 0])
-    hull_ls4.rotate(mat_from_quaternion_np(multiply_np(q_true, [0, 0, 1, 0]))[0], [0, 0, 0])
-    #exit()
     vis = init_visualization()
 
     vis.add_geometry(hull_ls1)
-    #vis.add_geometry(hull_ls2)
-    #vis.add_geometry(hull_ls3)
-    #vis.add_geometry(hull_ls4)
-
 
     while True:
-        pts = sample_points_uniform(params_pred, rad_resolution=0.1)
+        pts = sample_points_uniform(params_true, rad_resolution=0.1)
         pcd = o3d.geometry.PointCloud()
         pcd.points = o3d.utility.Vector3dVector(pts)
         # Create convex hull
@@ -135,8 +110,8 @@ if __name__ == "__main__":
 
         pred = torch.tensor(
             [
-                #q_pred
-                np.concatenate([params_pred, q_pred])
+                q_pred
+                #np.concatenate([params_pred, q_pred])
             ],
             device='cuda:0', requires_grad=True)
 
@@ -167,7 +142,7 @@ if __name__ == "__main__":
         q_pred -= lr * gradient[8:]
         q_pred = normalize([q_pred])[0]
 
-        params_pred -= lr * gradient[:8]
+        #params_pred -= lr * gradient[:8]
 
 
         sleep(0.1)

@@ -450,11 +450,6 @@ class IoUAccuracy:
         union = a_bin | b_bin
         iou = torch.sum(intersection).double()/torch.sum(union).double()
 
-        #if iou < 0.5 or iou > 0.95:
-        #    print(iou)
-        #plot_render(self.xyz.cpu().numpy(), a[0].detach().cpu().numpy(), mode="in", figure=1, lims=(-1, 1))
-        #plot_render(self.xyz.cpu().numpy(), b[0].detach().cpu().numpy(), mode="in", figure=2, lims=(-1, 1))
-        #lt.show()
 
         return iou
 
@@ -543,8 +538,6 @@ class AngleLoss:
 if __name__ == "__main__":
     device = torch.device("cuda:0")
     req_grad = False
-
-
 
     granularity = 32
     #loss = ChamferLoss(render_size=32, device=device)

@@ -61,7 +61,7 @@ if CONTINUE_TRAINING:
 # ----- Training config
 
 loss_criterion = ChamferLoss(32, device)
-accuracy_estimator = IoUAccuracy(render_size=64, device=device, full=True)
+accuracy_estimator = IoUAccuracy(render_size=32, device=device, full=True)
 
 
 # ----- Main loop
@@ -86,7 +86,7 @@ for epoch in range(starting_epoch, MAX_EPOCHS):
 
         # Predict
         pred_size, pred_shape, pred_position, pred_quat = net(data)
-        pred_labels = torch.cat([pred_size, pred_shape, pred_position, pred_quat], dim=1) 
+        pred_labels = torch.cat([pred_size, pred_shape, pred_position, pred_quat], dim=1)
 
         # Calculate loss and backpropagate
         loss = loss_criterion(true_labels, pred_labels) 
@@ -134,16 +134,14 @@ for epoch in range(starting_epoch, MAX_EPOCHS):
         for batch_idx, (data, true_labels) in enumerate(validation_generator):
 
             data, true_labels = data.to(device), true_labels.to(device)
-            pred_block, pred_quat = net(data)
-            
 
             # Predict
             pred_size, pred_shape, pred_position, pred_quat = net(data)
             pred_labels = torch.cat([pred_size, pred_shape, pred_position, pred_quat], dim=1) 
   
             # Calculate loss and backpropagate
-            
-            acc = accuracy_estimator(true_labels, pred_quat)
+            loss = loss_criterion(true_labels, pred_labels)
+            acc = accuracy_estimator(true_labels, pred_labels)
             
             if batch_idx == 0:
                 trues = true_labels.cpu().detach().numpy()
