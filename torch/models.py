@@ -30,7 +30,7 @@ class RotationHead(nn.Module):
         return x
 
 class SizeHead(nn.Module):
-    def __init__(self, in_features, dense=False):
+    def __init__(self, in_features, dense=False, dense_features=64):
         super(SizeHead, self).__init__()
 
         self.dense = dense
@@ -52,7 +52,7 @@ class SizeHead(nn.Module):
         return x
 
 class ShapeHead(nn.Module):
-    def __init__(self, in_features, dense=False):
+    def __init__(self, in_features, dense=False, dense_features=64):
         super(ShapeHead, self).__init__()
 
         self.dense = dense
@@ -74,7 +74,7 @@ class ShapeHead(nn.Module):
         return x
 
 class PositionHead(nn.Module):
-    def __init__(self, in_features, dense=False):
+    def __init__(self, in_features, dense=False, dense_features=64):
         super(PositionHead, self).__init__()
 
         self.dense = dense
@@ -96,7 +96,7 @@ class PositionHead(nn.Module):
         return x
 
 class BlockHead(nn.Module):
-    def __init__(self, in_features, dense=False):
+    def __init__(self, in_features, dense=False, dense_features=64):
         super(BlockHead, self).__init__()
 
         self.dense = dense
@@ -182,8 +182,7 @@ class ResNetSQ(nn.Module):
             nn.Linear(512, self.fcn), nn.LeakyReLU(),
             nn.Linear(self.fcn, self.fcn), nn.LeakyReLU()
         )
-        
-        
+
         self.output_size = SizeHead(self.fcn)
         self.output_shape = ShapeHead(self.fcn)
         self.output_position = PositionHead(self.fcn)

@@ -145,8 +145,8 @@ for epoch in range(starting_epoch, MAX_EPOCHS):
             
             if batch_idx == 0:
                 trues = true_labels.cpu().detach().numpy()
-                preds = pred_quat.cpu().detach().numpy()
-                save_compare_images(trues, np.concatenate((trues[:, :8], preds), axis=-1))
+                preds = pred_labels.cpu().detach().numpy()
+                save_compare_images(trues, preds)
 
             val_losses.append(loss.item())
             val_accuracies.append(acc.item())

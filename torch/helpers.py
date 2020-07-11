@@ -53,6 +53,7 @@ def load_model(path, model, optimizer):
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     epoch = checkpoint['epoch']
     loss = checkpoint['loss']
+
     return epoch, model, optimizer, loss
 
 
