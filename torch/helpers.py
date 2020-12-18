@@ -1,10 +1,14 @@
 import os
+import cv2
 import numpy as np
 import torch
 from torchviz import make_dot
 from matplotlib import pyplot as plt
+from matplotlib import pylab as pl
 from matplotlib.lines import Line2D
 from time import sleep
+from models import ResNetSQ
+
 
 def norm_img(img):
     img -= img.min()
@@ -45,15 +49,23 @@ def save_model(path, epoch, model, optimizer, loss):
     }, path)
 
 
-def load_model(path, model, optimizer):
+def load_model(path, model, optimizer, plot=False):
     print("Loading model: " + path)
-    checkpoint = torch.load(path)
+    checkpoint = torch.load(path, map_location="cuda:0")
     model.load_state_dict(checkpoint['model_state_dict'])
     if optimizer is not None:
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     epoch = checkpoint['epoch']
     loss = checkpoint['loss']
 
+    if plot:
+        plt.plot(loss['loss'], label="Loss")
+        plt.plot(loss['val_loss'], label="Validation Loss")
+        plt.title("Progression of loss during training")
+        plt.xlabel("# Epochs")
+        plt.ylabel("Loss")
+        plt.legend()
+        plt.show()
     return epoch, model, optimizer, loss
 
 
@@ -70,6 +82,25 @@ def save_compare_images(params_true, params_pred):
         os.system(command)
 
 
+def compare_images(params_true, params_pred, wait=16):
+    for i, (true, pred) in enumerate(zip(params_true, params_pred)):
+        M = quat2mat(true[-4:])
+        params = np.concatenate((true[:3] * 255., true[3:5], true[5:8] * 255, M.ravel()))
+        command = get_command("../", "true.bmp", params)
+        os.system(command)
+        M = quat2mat(pred[-4:])
+
+        params = np.concatenate((np.clip(pred[:3], 0.05, 1) * 255., np.clip(pred[3:5], 0.1, 1), np.clip(pred[5:8], 0, 1)* 255, M.ravel()))
+        command = get_command("../", "pred.bmp", params)
+        os.system(command)
+
+        true_img = cv2.imread("true.bmp", 0)
+        pred_img = cv2.imread("pred.bmp", 0)
+        combined = np.hstack([true_img, pred_img])
+        cv2.imshow("comparison", combined )
+        cv2.waitKey(wait)
+
+
 def change_lr(opt, lr):
     for g in opt.param_groups:
         g['lr'] = lr
@@ -77,19 +108,22 @@ def change_lr(opt, lr):
 
 def plot_render(meshgrid, np_array, mode="all", figure=1, lims=(0, 1), eps=0.1):
     from mpl_toolkits.mplot3d import Axes3D
-    fig = plt.figure(1)
-    ax = fig.add_subplot(1, 2, figure, projection='3d')
+    from mpl_toolkits.mplot3d import axes3d, art3d
+    from matplotlib import colors, cm
+
+    fig = plt.figure(figure)
+    ax = fig.add_subplot(1, 1, 1, projection='3d')
     ax.set_aspect("auto")
 
     if mode == "all":
         disp = (np_array >= 0)
-        opacity = 0.1
+        opacity = 0
     elif mode == "in":
         disp = (np_array <= 1)
-        opacity = 0.01
+        opacity = 0.2
     elif mode == "in_inv":
-        disp = (np_array > 0.5)
-        opacity = 0.00
+        disp = (np_array > 0.9)
+        opacity = 0.2
     elif mode == "bit":
         disp = (np_array == 1)
         opacity = 0
@@ -101,26 +135,43 @@ def plot_render(meshgrid, np_array, mode="all", figure=1, lims=(0, 1), eps=0.1):
     dsp = disp.ravel()
     np_max, np_min = np_array.max(), np_array.min()
     np_array = -1 + ((np_array - np_min)/(np_max - np_min)) * 2
-
+    print(np_max, np_min)
     for i in range(np_array.shape[0]):
         r, b, g, a = gray_to_jet(np_array[i])
         if not dsp[i]:
             a = opacity
+        else:
+            a = 1
         clr[i] = np.array([r, b, g, a])
+
+
 
     ax.scatter(
         meshgrid[0],
         meshgrid[1],
         meshgrid[2],
-        color=clr, marker='o'
+        color=clr, marker='o', vmin=np_min, vmax=np_max #, alpha=0.5
         #np_array[disp].ravel(), marker='o', alpha=0.3
     )
-    lims2 = (1, 0)
     ax.set(xlim=lims, ylim=lims, zlim=lims)
-    ax.set_xlabel('X Axis')
-    ax.set_ylabel('Y Axis')
-    ax.set_zlabel('Z Axis')
 
+    plt.colorbar(cm.ScalarMappable(norm=colors.Normalize(vmin=np_min, vmax=np_max), cmap=plt.cm.get_cmap("jet")), ax=ax)
+
+    def flims(mplotlims):
+        scale = 1.021
+        offset = (mplotlims[1] - mplotlims[0]) * scale
+        return mplotlims[1] - offset, mplotlims[0] + offset
+
+
+    opacity = 0.3
+
+    xlims, ylims, zlims = flims(ax.get_xlim()), flims(ax.get_ylim()), flims(ax.get_zlim())
+    print(xlims, ylims, zlims )
+    i = np.array([xlims[0], ylims[0], zlims[0]])
+    f = np.array([xlims[0], ylims[0], zlims[1]])
+    p = art3d.Poly3DCollection(np.array([[i, f]]), alpha=opacity)
+    p.set_color('black')
+    ax.add_collection3d(p)
 
 
 def plot_points(xs, ys, zs, figure=2, lims=(-1, 1), subplot=111):
@@ -226,6 +277,7 @@ def plot_grad_flow(named_parameters):
                 Line2D([0], [0], color="b", lw=4),
                 Line2D([0], [0], color="k", lw=4)], ['max-gradient', 'mean-gradient', 'zero-gradient'])
 
+
 def getBack(var_grad_fn):
     print(var_grad_fn)
     for n in var_grad_fn.next_functions:
@@ -239,6 +291,7 @@ def getBack(var_grad_fn):
                 print()
             except AttributeError as e:
                 getBack(n[0])
+
 
 def randquat():
     u = np.random.uniform(0, 1, (3,))
@@ -275,3 +328,10 @@ def slerp(v0, v1, t_array):
     s0 = np.cos(theta) - dot * sin_theta / sin_theta_0
     s1 = sin_theta / sin_theta_0
     return (s0[:, np.newaxis] * v0[np.newaxis, :]) + (s1[:, np.newaxis] * v1[np.newaxis, :]), v1
+
+
+if __name__ == "__main__":
+    TRAINED_MODEL = "final_models/model_unsupervised.pt"
+    net = ResNetSQ(outputs=4, pretrained=False)
+    # Load model weights and put network in to EVAL mode!
+    epoch, net, _, _ = load_model(TRAINED_MODEL, net, None, plot=True)

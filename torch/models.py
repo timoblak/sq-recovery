@@ -29,6 +29,7 @@ class RotationHead(nn.Module):
 
         return x
 
+
 class SizeHead(nn.Module):
     def __init__(self, in_features, dense=False, dense_features=64):
         super(SizeHead, self).__init__()
@@ -50,6 +51,7 @@ class SizeHead(nn.Module):
         x = self.out_layer(x)
         x = torch.sigmoid(x)
         return x
+
 
 class ShapeHead(nn.Module):
     def __init__(self, in_features, dense=False, dense_features=64):
@@ -73,6 +75,7 @@ class ShapeHead(nn.Module):
         x = torch.sigmoid(x)
         return x
 
+
 class PositionHead(nn.Module):
     def __init__(self, in_features, dense=False, dense_features=64):
         super(PositionHead, self).__init__()
@@ -95,6 +98,7 @@ class PositionHead(nn.Module):
         x = torch.sigmoid(x)
         return x
 
+
 class BlockHead(nn.Module):
     def __init__(self, in_features, dense=False, dense_features=64):
         super(BlockHead, self).__init__()
@@ -116,6 +120,7 @@ class BlockHead(nn.Module):
         x = self.out_layer(x)
 
         return x
+
 
 class GenericNetSQ(nn.Module):
     def __init__(self, outputs, fcn=256, dropout=0):
@@ -190,12 +195,10 @@ class ResNetSQ(nn.Module):
 
     def forward(self, x):
         # Graph
-
         x = self.encoder(x)
 
         x_size = self.output_size.forward(x)
         x_shape = self.output_shape.forward(x)
         x_position = self.output_position.forward(x)
         x_rotation = self.output_rotation.forward(x)
-
         return  x_size, x_shape, x_position, x_rotation
