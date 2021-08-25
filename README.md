@@ -41,15 +41,7 @@ Working on a Linux machine with CUDA 10 and cuDNN 7+. Python version is 3.6.x No
 Check requirements.txt for python packages. 
 
 [Download](https://unilj-my.sharepoint.com/:u:/g/personal/tim_oblak_fri1_uni-lj_si/EaR_Ij6K_CtDiJIc-GS4ObwBBZRTfPu9yXRXZA2XfUCkfw?e=dmrsc7) any pretrained models. 
-Run `mkdir models/` and save there.  
+Run `mkdir models/` and save there. To test this use model `cnn_isometry_100k.h5` and run `python test_isometry.py`.  
 
-```
-tar zxvf data_isometry_train.tar.gz -C data/
-tar zxvf data_isometry_val.tar.gz -C data/
-...
-```
-
-To generate data, use `data/generation_scripts/gen_rand_iso.py`
-To test this use model `cnn_isometry_100k.h5` and run `python test_isometry.py`.
-To train this model, run `python train_isometry.py`. Make sure, you downloaded and extracted the dataset.
+To generate data, use `data/generation_scripts/gen_rand_iso.py`. To train this model, run `python train_isometry.py`. 
  
