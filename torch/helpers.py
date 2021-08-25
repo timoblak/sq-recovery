@@ -2,7 +2,6 @@ import os
 import cv2
 import numpy as np
 import torch
-from torchviz import make_dot
 from matplotlib import pyplot as plt
 from matplotlib import pylab as pl
 from matplotlib.lines import Line2D
@@ -217,15 +216,6 @@ def parse_csv(csvfile):
     print("Size of data: " + str(len(labels)))
     print("----------------------------------------------------------------")
     return labels
-
-
-def graph2img(net, filename="graph.png"):
-    x = torch.randn(1, 1, 256, 256).requires_grad_(True)
-    y = net(x)
-    dot = make_dot(y, params=dict(list(net.named_parameters()) + [('x', x)]))
-    dot.format = filename.split(".")[1]
-    dot.render(filename.split(".")[0])
-    print("Graph visualization saved to " + filename)
 
 
 def gray_to_jet(gray):
