@@ -9,6 +9,8 @@ torch
 h5py
 torchvision
 torchsummary
+open3d
+sklearn
 
 # Requirements for code in py/
 keras
