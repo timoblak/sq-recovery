@@ -14,4 +14,4 @@ sklearn
 
 # Requirements for code in py/
 keras
-tensorflow-gpu==1.14.0
+tensorflow-gpu
