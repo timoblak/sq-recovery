@@ -28,7 +28,7 @@ The dataset you can generate yourself with the given scripts.
 Save models to `torch/trained_models/` and run `torch/test.py`.  
 
 #### References
-If this open-source software was useful to you, please consider [citing our publication](https://doi.org/10.1109/ACCESS.2020.3041584). 
+If this open-source software was useful to you, [cite our publication](https://doi.org/10.1109/ACCESS.2020.3041584). 
     
     T. Oblak, J. Šircelj, V. Štruc, P. Peer, F. Solina, A. Jaklič
     Learning to Predict Superquadric Parameters From Depth Images With Explicit and Implicit Supervision 
@@ -52,7 +52,7 @@ Run `mkdir models/` and save there. To test this use model `cnn_isometry_100k.h5
 To generate data, use `data/generation_scripts/gen_rand_iso.py`. To train this model, run `python train_isometry.py`. 
  
 #### References
-If this open-source software was useful to you, please consider [citing our publication](https://doi.org/10.1109/IWOBI47054.2019.9114452). 
+If this open-source software was useful to you, [cite our publication](https://doi.org/10.1109/IWOBI47054.2019.9114452). 
     
     T. Oblak, K. Grm, A. Jaklič, P. Peer, V. Štruc, F. Solina 
     Recovery of Superquadrics from Range Images using Deep Learning: A Preliminary Study
